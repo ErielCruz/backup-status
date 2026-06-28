@@ -34,9 +34,14 @@ def run_cmd(cmd: str, timeout: int = 15) -> tuple[str, bool]:
         return str(exc), False
 
 
+LOG_DIR = env("LOG_DIR", "/logs")
+
 def get_systemd_timers() -> dict:
     output, success = run_cmd(
-        "systemctl list-timers --all --no-pager 2>/dev/null | grep -E 'backup|sync|pull' || echo 'systemctl not available'"
+        "systemctl list-timers --all --no-pager 2>/dev/null | grep -E 'backup|sync|pull' "
+        "|| systemctl --user list-timers --all --no-pager 2>/dev/null | grep -E 'backup|sync|pull' "
+        "|| cat /logs/timer-status.txt 2>/dev/null "
+        "|| echo 'Run backup-status.sh on mini: systemctl --user list-timers --all | grep backup|sync'"
     )
     return {"output": output, "success": success}
 
@@ -70,15 +75,27 @@ def get_disk_usage() -> dict:
 
 
 def get_recent_logs() -> dict:
-    output, success = run_cmd(
-        "journalctl -u 'backup-*' -u 'sync-*' --since '7 days ago' --no-pager 2>/dev/null | tail -80 || echo 'journalctl not available'"
-    )
-    return {"output": output, "success": success}
+    log_dir = Path(LOG_DIR)
+    if log_dir.is_dir():
+        lines = []
+        for f in sorted(log_dir.glob("*.log"), reverse=True)[:5]:
+            try:
+                with f.open("r", encoding="utf-8", errors="replace") as fh:
+                    content = fh.read()
+                    if content:
+                        lines.append(f"=== {f.name} ===\n")
+                        lines.extend(content.splitlines()[-30:])
+                        lines.append("")
+            except Exception:
+                pass
+        return {"output": "\n".join(lines[-80:]) or "No logs found", "success": True}
+    return {"output": "Log directory not available", "success": False}
 
 
 def get_failed_units() -> dict:
     output, success = run_cmd(
-        "systemctl --failed --no-pager 2>/dev/null | grep -E 'backup|sync|pull' || echo ''"
+        "systemctl --user --failed --no-pager 2>/dev/null | grep -E 'backup|sync|pull' "
+        "|| echo 'No failed units (or systemctl unavailable)'"
     )
     return {"output": output, "success": success}
 
