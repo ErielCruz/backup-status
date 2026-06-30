@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Backup Status{% endblock %}
+{% block content %}
+<div class="container">
+  <div class="header">
+    <span class="status-dot"></span>
+    <h1>Backup Status</h1>
+    <span class="badge" id="last-updated">Updated: {{ now }}</span>
+  </div>
+
+  <h2>Systemd Timers</h2>
+  <div class="card" id="timers-section" hx-get="/api/timers" hx-trigger="every 60s" hx-swap="innerHTML">
+    {% with output=timers %}{% include "sections/timers.html" %}{% endwith %}
+  </div>
+
+  <div class="grid-2">
+    <div>
+      <h2>Restic Snapshots</h2>
+      <div class="card" id="snapshots-section" hx-get="/api/snapshots" hx-trigger="every 60s" hx-swap="innerHTML">
+        {% include "sections/snapshots.html" %}
+      </div>
+    </div>
+    <div>
+      <h2>Restic Stats</h2>
+      <div class="card" id="stats-section" hx-get="/api/stats" hx-trigger="every 60s" hx-swap="innerHTML">
+        {% with output=stats %}{% include "sections/stats.html" %}{% endwith %}
+      </div>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <div>
+      <h2>Disk Usage</h2>
+      <div class="card" id="disk-section" hx-get="/api/disk" hx-trigger="every 120s" hx-swap="innerHTML">
+        {% with output=disk %}{% include "sections/disk.html" %}{% endwith %}
+      </div>
+    </div>
+    <div>
+      <h2>Failed Units</h2>
+      <div class="card" id="failed-section" hx-get="/api/failed" hx-trigger="every 120s" hx-swap="innerHTML">
+        {% with output=failed %}{% include "sections/failed.html" %}{% endwith %}
+      </div>
+    </div>
+  </div>
+
+  <h2>Recent Logs</h2>
+  <div class="card" id="logs-section" hx-get="/api/logs" hx-trigger="every 120s" hx-swap="innerHTML">
+    {% with output=logs %}{% include "sections/logs.html" %}{% endwith %}
+  </div>
+</div>
+{% endblock %}
