@@ -28,6 +28,67 @@
     </div>
   </div>
 
+  <div class="card{% if health.status == "fail" %} card-fail{% elif health.status == "warn" %} card-warn{% endif %}">
+    <div class="card-title">Audit Check Results
+      {% if audit.last_audit %}
+      <span class="card-badge">{{ audit.last_audit[11:16] }}</span>
+      {% endif %}
+    </div>
+    {% if audit.last_audit %}
+      <div class="stat-sub" style="margin-bottom:12px">Last audit: {{ audit.last_audit }}</div>
+      {% if health.audit_errors == 0 and health.audit_warnings == 0 %}
+        <div class="status-row">
+          <span class="status status-pass">PASS</span>
+          <span class="status-text">All checks passed</span>
+        </div>
+      {% endif %}
+      {% if audit.error_list %}
+        <div class="audit-section">
+          <div class="audit-section-title">Errors ({{ audit.error_list|length }})</div>
+          <ul class="audit-list">
+            {% for item in audit.error_list %}
+            <li><span class="status status-fail">ERROR</span> {{ item }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endif %}
+      {% if audit.warning_list %}
+        <div class="audit-section">
+          <div class="audit-section-title">Warnings ({{ audit.warning_list|length }})</div>
+          <ul class="audit-list">
+            {% for item in audit.warning_list %}
+            <li><span class="status status-warn">WARN</span> {{ item }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endif %}
+      {% if audit.snapshots %}
+        <div class="audit-section">
+          <div class="audit-section-title">Restic Snapshots</div>
+          <div class="grid-3" style="margin-top:8px">
+            <div class="stat-box">
+              <div class="stat-label">B2</div>
+              <div class="stat-value">{{ audit.snapshots.b2 if audit.snapshots.b2 is not none else "—" }}</div>
+              <div class="stat-sub">{% if audit.b2_latest %}Latest: {{ audit.b2_latest[5:16] }}{% else %}—{% endif %}</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-label">Hetzner</div>
+              <div class="stat-value">{{ audit.snapshots.hetzner if audit.snapshots.hetzner is not none else "—" }}</div>
+              <div class="stat-sub">{% if audit.hetzner_latest %}Latest: {{ audit.hetzner_latest[5:16] }}{% else %}—{% endif %}</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-label">Secrets</div>
+              <div class="stat-value">{{ audit.snapshots.secrets if audit.snapshots.secrets is not none else "—" }}</div>
+              <div class="stat-sub">—</div>
+            </div>
+          </div>
+        </div>
+      {% endif %}
+    {% else %}
+      <div class="empty">No audit data available</div>
+    {% endif %}
+  </div>
+
   <div class="card">
     <div class="card-title">Jobs</div>
     {% if jobs %}

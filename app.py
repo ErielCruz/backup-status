@@ -205,6 +205,8 @@ def get_audit_summary():
             audit = json.loads(AUDIT_STATE.read_text())
             result["errors"] = audit.get("errors", 0)
             result["warnings"] = audit.get("warnings", 0)
+            result["error_list"] = audit.get("error_list", [])
+            result["warning_list"] = audit.get("warning_list", [])
             result["last_audit"] = audit.get("audit_time", "")
             result["snapshots"] = audit.get("snapshots", {})
             result["b2_latest"] = audit.get("b2_latest", "")
