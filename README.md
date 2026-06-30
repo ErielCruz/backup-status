@@ -1,37 +1,41 @@
-# backup-status
+# Backup Status Dashboard
 
-Simple self-hosted web dashboard for backup monitoring.
+Web dashboard at https://backup.erielcruz.com showing backup and sync job health.
 
-## Features
+## What it shows
 
-- `GET /` renders backup status dashboard (auto-refresh each 60s)
-- `GET /health` returns app health
-- `GET /api/timers` shows systemd timer status
-- `GET /api/snapshots` shows restic snapshots
-- `GET /api/stats` shows restic repository stats
-- `GET /api/disk` shows disk usage on backup drives
-- `GET /api/logs` shows recent backup logs
-- `GET /api/failed` shows failed systemd units
+- **Jobs table** — which backup/sync jobs ran, their status (pass/fail), last run, next scheduled run
+- **Disk usage** — Samsung SSD and 4TB drive capacity with color-coded usage bars
+- **Snapshot count** — encrypted restic snapshots stored in Backblaze B2
 
-## Environment
+## How it works
 
-- `BACKUP_STATUS_HOST` default `0.0.0.0`
-- `BACKUP_STATUS_PORT` default `5000`
-- `RESTIC_REPOSITORY` restic repository URL (e.g. `b2:backup-ssd-ecc:restic-backups`)
-- `RESTIC_PASSWORD_FILE` path to restic password file
-- `SAMSUNG_MOUNT` mount path for Samsung SSD stats (default `/samsung`)
-- `TB_MOUNT` mount path for 4TB drive stats (default `/4tb`)
+A host-side collector runs every 2 minutes via systemd timer, queries systemd for job status, and writes JSON to a shared volume. The Flask app reads this and renders the dashboard. HTMX polls every 60 seconds for live updates.
 
-## Local Run
+## Backup strategy (simple version)
+
+Your data is protected by two separate systems:
+
+| System | Tool | What | Encrypted? |
+|---|---|---|---|
+| **File sync** | rclone | Photos, Videos, documents | No — raw copy |
+| **Snapshots** | restic | System state, DB dumps, secrets | Yes — passphrase |
+
+- **Photos are safe even if the passphrase is lost.** They live in raw folders synced by rclone to local disk, B2, and Hetzner.
+- **The passphrase only protects restic data** (container configs, database dumps, `.secret` files).
+- Both Immich and Photoprism databases are backed up twice: once raw via rclone, once encrypted via restic.
+
+## Running locally
 
 ```bash
-docker build -t backup-status .
-docker run --rm -p 5000:5000 \
-  -v /var/run/systemd:/var/run/systemd:ro \
-  -v /home/eriel/Samsung_750:/samsung:ro \
-  -v /home/eriel/4TB:/4tb:ro \
-  -v /home/eriel/Documents/home_server_ops/home_server_backup/config/backup.passphrase:/run/secrets/restic_password:ro \
-  -e RESTIC_REPOSITORY=b2:backup-ssd-ecc:restic-backups \
-  -e RESTIC_PASSWORD_FILE=/run/secrets/restic_password \
-  backup-status
+cd /home/eriel/Documents/repos/backup-status
+docker compose -f /home/eriel/Documents/backup_docker/stacks/backup-status/compose.yaml up -d
 ```
+
+## API
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /` | Dashboard page |
+| `GET /health` | Health check |
+| `GET /api/refresh` | HTMX partial update |
