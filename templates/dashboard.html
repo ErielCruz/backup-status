@@ -22,6 +22,10 @@
       <span class="health-label">Verified</span>
       <span class="health-value">{{ stats.verified_passed }}/{{ stats.runs_with_verification }} pass</span>
     </div>
+    <div class="health-item">
+      <span class="health-label">Audit</span>
+      <span class="health-value">{{ health.audit_errors }}E / {{ health.audit_warnings }}W</span>
+    </div>
   </div>
 
   <div class="card">
@@ -57,6 +61,98 @@
     <div class="empty">No job data yet</div>
     {% endif %}
   </div>
+
+  {% if restic %}
+  <div class="card">
+    <div class="card-title">Restic Snapshots</div>
+    <div class="grid-3">
+      <div class="stat-box">
+        <div class="stat-label">B2</div>
+        <div class="stat-value">{{ restic.b2.count if restic.b2 else "—" }}</div>
+        <div class="stat-sub">{% if restic.b2 and restic.b2.latest %}Latest: {{ restic.b2.latest[5:16] }}{% else %}—{% endif %}</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Hetzner</div>
+        <div class="stat-value">{{ restic.hetzner.count if restic.hetzner else "—" }}</div>
+        <div class="stat-sub">{% if restic.hetzner and restic.hetzner.latest %}Latest: {{ restic.hetzner.latest[5:16] }}{% else %}—{% endif %}</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Secrets</div>
+        <div class="stat-value">{{ restic.secrets.count if restic.secrets else "—" }}</div>
+        <div class="stat-sub">{% if restic.secrets and restic.secrets.latest %}Latest: {{ restic.secrets.latest[5:16] }}{% else %}—{% endif %}</div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if remotes %}
+  <div class="card">
+    <div class="card-title">Remote Storage Verification</div>
+    <table>
+      <thead>
+        <tr>
+          <th>Destination</th>
+          <th>Local Size</th>
+          <th>Remote Size</th>
+          <th>Remote Files</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>B2: HomeServerBackups</td>
+          <td class="td-num">{{ remotes.local_runs_size | fmt_bytes if remotes.local_runs_size else "—" }}</td>
+          <td class="td-num">{{ remotes.b2_runs.bytes | fmt_bytes if remotes.b2_runs else "—" }}</td>
+          <td class="td-num">{{ remotes.b2_runs.count if remotes.b2_runs else "—" }}</td>
+          <td>
+            {% if remotes.b2_runs and remotes.local_runs_size %}
+              {% set diff = ((remotes.b2_runs.bytes - remotes.local_runs_size) / remotes.local_runs_size * 100) | abs %}
+              {% if diff < 10 %}
+              <span class="status status-pass">SYNCED</span>
+              {% else %}
+              <span class="status status-warn">PENDING</span>
+              {% endif %}
+            {% else %}
+            <span class="status status-unknown">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        <tr>
+          <td>B2: Pictures</td>
+          <td class="td-num">—</td>
+          <td class="td-num">{{ remotes.b2_pictures.bytes | fmt_bytes if remotes.b2_pictures else "—" }}</td>
+          <td class="td-num">{{ remotes.b2_pictures.count if remotes.b2_pictures else "—" }}</td>
+          <td>
+            {% if remotes.b2_pictures and remotes.b2_pictures.count > 0 %}
+            <span class="status status-pass">OK</span>
+            {% else %}
+            <span class="status status-unknown">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        <tr>
+          <td>Hetzner: Backup_SSD</td>
+          <td class="td-num">{{ remotes.local_runs_size | fmt_bytes if remotes.local_runs_size else "—" }}</td>
+          <td class="td-num">{{ remotes.hetzner_runs.bytes | fmt_bytes if remotes.hetzner_runs else "—" }}</td>
+          <td class="td-num">{{ remotes.hetzner_runs.count if remotes.hetzner_runs else "—" }}</td>
+          <td>
+            {% if remotes.hetzner_runs and remotes.local_runs_size %}
+              {% set diff = ((remotes.hetzner_runs.bytes - remotes.local_runs_size) / remotes.local_runs_size * 100) | abs %}
+              {% if diff < 10 %}
+              <span class="status status-pass">SYNCED</span>
+              {% else %}
+              <span class="status status-warn">PENDING</span>
+              {% endif %}
+            {% else %}
+            <span class="status status-unknown">—</span>
+            {% endif %}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="stat-sub" style="margin-top:8px">Size comparison: Local vs Remote should be within 10% for "SYNCED" status</div>
+  </div>
+  {% endif %}
 
   <div class="grid-3">
     {% for d in disk %}

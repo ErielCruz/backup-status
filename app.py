@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from flask import Flask, jsonify, render_template
+import subprocess
 
 app = Flask(__name__)
 
@@ -19,6 +20,10 @@ def env(n, d):
 SAMSUNG = env("SAMSUNG_MOUNT", "/samsung")
 TB = env("TB_MOUNT", "/4tb")
 LOG_DIR = env("LOG_DIR", "/logs")
+AUDIT_STATE = Path("/state/audit-latest.json")
+RESTIC_PASSWORD_FILE = "/run/secrets/restic_password"
+RESTIC_ENV_FILE = "/home/eriel/Documents/home_server_ops/home_server_backup/config/restic.env"
+
 STATUS_FILE = Path(LOG_DIR) / "status.json"
 RUNS_DIR = Path(SAMSUNG) / "Backup_SSD" / "HomeServerBackups" / "runs"
 
@@ -34,9 +39,13 @@ def set_cache(key, data, ttl=300):
     _cache[key] = {"data": data, "expires": time.time() + ttl}
 
 
-def run(cmd, timeout=30):
+def run(cmd, timeout=30, env=None):
     try:
-        r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout)
+        import subprocess
+        run_env = os.environ.copy()
+        if env:
+            run_env.update(env)
+        r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout, env=run_env)
         return r.stdout.strip(), r.returncode == 0
     except subprocess.TimeoutExpired:
         return "Command timed out", False
@@ -96,6 +105,116 @@ def load_status():
         except (json.JSONDecodeError, OSError):
             pass
     return {"jobs": [], "updated": None}
+
+
+SAMSUNG = env("SAMSUNG_MOUNT", "/samsung")
+TB = env("TB_MOUNT", "/4tb")
+LOG_DIR = env("LOG_DIR", "/logs")
+AUDIT_STATE = Path("/state/audit-latest.json")
+RESTIC_PASSWORD_FILE = "/run/secrets/restic_password"
+RESTIC_ENV_FILE = "/home/eriel/Documents/home_server_ops/home_server_backup/config/restic.env"
+
+def get_restic_info():
+    data = cached("restic_info")
+    if data is not None:
+        return data
+
+    result = {"b2": None, "hetzner": None, "secrets": None, "error": None}
+
+    env = os.environ.copy()
+    env.update({
+        "RESTIC_PASSWORD_FILE": RESTIC_PASSWORD_FILE,
+        "PATH": os.path.expanduser("~/.local/bin") + ":" + os.environ.get("PATH", ""),
+    })
+
+    repos = {
+        "b2": "b2:backup-ssd-ecc:restic-backups",
+        "hetzner": "rclone:hetzner-4tb:restic-backups",
+        "secrets": "b2:backup-ssd-ecc:restic-secrets"
+    }
+
+    for name, repo in repos.items():
+        try:
+            cmd = f"restic -r '{repo}' snapshots --json 2>/dev/null"
+            out, ok = run(cmd, timeout=15, env=env)
+            if ok and out:
+                snapshots = json.loads(out)
+                result[name] = {
+                    "count": len(snapshots),
+                    "latest": snapshots[0]["time"][:19] if snapshots else None
+                }
+        except Exception as e:
+            result["error"] = str(e)
+
+    set_cache("restic_info", result, ttl=600)
+    return result
+
+
+def get_remote_sizes():
+    data = cached("remote_sizes")
+    if data is not None:
+        return data
+
+    env = os.environ.copy()
+    env.update({
+        "PATH": os.path.expanduser("~/.local/bin") + ":" + os.environ.get("PATH", ""),
+    })
+
+    result = {}
+    
+    local_runs = Path(SAMSUNG) / "Backup_SSD" / "HomeServerBackups" / "runs"
+    if local_runs.exists():
+        out, _ = run(f"du -sb '{local_runs}' 2>/dev/null", timeout=10, env=env)
+        try:
+            result["local_runs_size"] = int(out.split()[0])
+        except Exception:
+            result["local_runs_size"] = 0
+    else:
+        result["local_runs_size"] = 0
+    
+    remotes = {
+        "b2_runs": "backup-ssd-ecc:backup-ssd-ecc/HomeServerBackups/runs",
+        "b2_pictures": "pictures-ecc:pictures-ecc",
+        "hetzner_runs": "hetzner-4tb:Backup_SSD/HomeServerBackups/runs",
+    }
+    
+    for name, remote in remotes.items():
+        try:
+            out, ok = run(f"rclone size --json '{remote}' 2>/dev/null", timeout=30, env=env)
+            if ok and out:
+                info = json.loads(out)
+                result[name] = {"count": info.get("count", 0), "bytes": info.get("bytes", 0)}
+            else:
+                result[name] = {"count": 0, "bytes": 0}
+        except Exception:
+            result[name] = {"count": 0, "bytes": 0}
+    
+    set_cache("remote_sizes", result, ttl=600)
+    return result
+
+
+def get_audit_summary():
+    data = cached("audit_summary")
+    if data is not None:
+        return data
+    
+    result = {"errors": 0, "warnings": 0, "last_audit": None, "passed": True}
+    
+    if AUDIT_STATE.exists():
+        try:
+            audit = json.loads(AUDIT_STATE.read_text())
+            result["errors"] = audit.get("errors", 0)
+            result["warnings"] = audit.get("warnings", 0)
+            result["last_audit"] = audit.get("audit_time", "")
+            result["snapshots"] = audit.get("snapshots", {})
+            result["b2_latest"] = audit.get("b2_latest", "")
+            result["hetzner_latest"] = audit.get("hetzner_latest", "")
+            result["passed"] = result["errors"] == 0
+        except Exception:
+            pass
+    
+    set_cache("audit_summary", result, ttl=300)
+    return result
 
 
 def get_disk():
@@ -205,10 +324,13 @@ def get_overall_health():
     jobs = status.get("jobs", [])
     failures = [j for j in jobs if j.get("last_result") != "success"]
     verif = get_verification_status()
+    audit = get_audit_summary()
 
-    if failures:
+    if failures or (audit.get("errors", 0) > 0):
         health = "fail"
     elif verif.get("rate", 100) < 100 and verif.get("recent"):
+        health = "warn"
+    elif audit.get("warnings", 0) > 0:
         health = "warn"
     else:
         health = "ok"
@@ -217,6 +339,8 @@ def get_overall_health():
         "status": health,
         "job_failures": len(failures),
         "job_total": len(jobs),
+        "audit_errors": audit.get("errors", 0),
+        "audit_warnings": audit.get("warnings", 0),
     }
 
 
@@ -235,6 +359,9 @@ def index():
         stats=get_backup_stats(),
         verification=get_verification_status(),
         health=get_overall_health(),
+        restic=get_restic_info(),
+        remotes=get_remote_sizes(),
+        audit=get_audit_summary(),
     )
 
 
@@ -254,6 +381,9 @@ def api_refresh():
         stats=get_backup_stats(),
         verification=get_verification_status(),
         health=get_overall_health(),
+        restic=get_restic_info(),
+        remotes=get_remote_sizes(),
+        audit=get_audit_summary(),
     )
 
 

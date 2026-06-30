@@ -3,6 +3,7 @@ FROM python:3.12-slim
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
        restic \
+       rclone \
        systemd \
        wget \
     && rm -rf /var/lib/apt/lists/*
