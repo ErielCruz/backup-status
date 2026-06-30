@@ -1,0 +1,65 @@
+<div class="container" hx-get="/api/refresh" hx-trigger="every 60s" hx-swap="outerHTML">
+  <div class="header">
+    <span class="dot"></span>
+    <h1>Backup Dashboard</h1>
+    <span class="badge">{{ now }}</span>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Jobs</div>
+    {% if jobs %}
+    <table>
+      <thead>
+        <tr>
+          <th>Job</th>
+          <th>Status</th>
+          <th>Last Run</th>
+          <th>Next</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for j in jobs %}
+        <tr>
+          <td>{{ j.name }}</td>
+          <td>
+            {% if j.last_result == "success" %}
+            <span class="status status-pass">OK</span>
+            {% else %}
+            <span class="status status-fail">FAIL</span>
+            {% endif %}
+          </td>
+          <td class="td-time">{{ j.last_run[11:16] if j.last_run else "—" }}</td>
+          <td class="td-time">{{ j.next_run[11:16] if j.next_run else "—" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty">No job data yet</div>
+    {% endif %}
+  </div>
+
+  <div class="grid-2">
+    {% for d in disk %}
+    <div class="card">
+      <div class="card-title">{{ d.label }}</div>
+      <div class="stat-value">{{ d.use_pct }}</div>
+      <div class="stat-sub">{{ d.used }} / {{ d.size }} used</div>
+      <div class="usage-bar">
+        {% set pct = d.use_pct.rstrip("%") | int %}
+        <div class="usage-fill{% if pct > 80 %} crit{% elif pct > 60 %} warn{% endif %}" style="width: {{ pct }}%"></div>
+      </div>
+    </div>
+    {% endfor %}
+    <div class="card">
+      <div class="card-title">Snapshots</div>
+      {% if snapshots.error %}
+      <div class="stat-value empty-error">—</div>
+      <div class="stat-sub">{{ snapshots.error }}</div>
+      {% else %}
+      <div class="stat-value">{{ snapshots.count }}</div>
+      <div class="stat-sub">{{ snapshots.latest[:16] if snapshots.latest else "No snapshots" }}</div>
+      {% endif %}
+    </div>
+  </div>
+</div>

@@ -1,117 +1,95 @@
 #!/usr/bin/env python3
-from flask import Flask, render_template, jsonify
-from pathlib import Path
 import json
 import os
 import subprocess
-import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+from flask import Flask, jsonify, render_template
 
 app = Flask(__name__)
 
 
-def env(name, default):
-    return os.environ.get(name) or default
+def env(n, d):
+    return os.environ.get(n) or d
 
 
 RESTIC_REPO = env("RESTIC_REPOSITORY", "b2:backup-ssd-ecc:restic-backups")
-RESTIC_PASSWORD_FILE = env("RESTIC_PASSWORD_FILE", "/run/secrets/restic_password")
-SAMSUNG_MOUNT = env("SAMSUNG_MOUNT", "/samsung")
-TB_MOUNT = env("TB_MOUNT", "/4tb")
+RESTIC_PW = env("RESTIC_PASSWORD_FILE", "/run/secrets/restic_password")
+SAMSUNG = env("SAMSUNG_MOUNT", "/samsung")
+TB = env("TB_MOUNT", "/4tb")
 LOG_DIR = env("LOG_DIR", "/logs")
+STATUS_FILE = Path(LOG_DIR) / "status.json"
 
 
-def run_cmd(cmd, timeout=15):
+def run(cmd, timeout=15):
     try:
-        result = subprocess.run(
-            cmd, shell=True, capture_output=True, text=True, timeout=timeout
-        )
-        return result.stdout, result.returncode == 0
+        r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout)
+        return r.stdout.strip(), r.returncode == 0
     except subprocess.TimeoutExpired:
         return "Command timed out", False
-    except Exception as exc:
-        return str(exc), False
+    except Exception as e:
+        return str(e), False
 
 
-def ts():
-    return time.strftime("%Y-%m-%d %H:%M:%S %Z")
-
-
-def get_systemd_timers():
-    output, success = run_cmd(
-        "systemctl list-timers --all --no-pager 2>/dev/null | grep -E 'backup|sync|pull' "
-        "|| systemctl --user list-timers --all --no-pager 2>/dev/null | grep -E 'backup|sync|pull' "
-        "|| cat /logs/timer-status.txt 2>/dev/null "
-        "|| echo 'Run backup-status.sh on mini: systemctl --user list-timers --all | grep backup|sync'"
-    )
-    return output, success
-
-
-def get_restic_snapshots():
-    if not Path(RESTIC_PASSWORD_FILE).exists():
-        return {"snapshots": [], "error": f"Password file not found"}
-    output, success = run_cmd(
-        f"restic -r {RESTIC_REPO} --password-file {RESTIC_PASSWORD_FILE} snapshots --compact --json 2>/dev/null"
-    )
-    if success and output.strip():
+def load_status():
+    if STATUS_FILE.is_file():
         try:
-            return {"snapshots": json.loads(output), "success": True}
-        except json.JSONDecodeError:
-            return {"snapshots": [], "error": "Failed to parse snapshot JSON"}
-    return {"snapshots": [], "error": output[-400:] if output else "No snapshots found"}
-
-
-def get_restic_stats():
-    if not Path(RESTIC_PASSWORD_FILE).exists():
-        return "Password file not found"
-    output, _ = run_cmd(
-        f"restic -r {RESTIC_REPO} --password-file {RESTIC_PASSWORD_FILE} stats --mode raw-data 2>/dev/null"
-    )
-    return output
-
-
-def get_disk_usage():
-    output, _ = run_cmd(
-        f"df -h {SAMSUNG_MOUNT} {TB_MOUNT} 2>/dev/null || df -h /"
-    )
-    return output
-
-
-def get_recent_logs():
-    log_dir = Path(LOG_DIR)
-    if not log_dir.is_dir():
-        return "Log directory not available"
-    lines = []
-    for f in sorted(log_dir.glob("*.log"), reverse=True)[:5]:
-        try:
-            content = f.read_text(encoding="utf-8", errors="replace")
-            if content:
-                lines.append(f"=== {f.name} ===\n")
-                lines.extend(content.splitlines()[-30:])
-                lines.append("")
-        except Exception:
+            return json.loads(STATUS_FILE.read_text())
+        except (json.JSONDecodeError, OSError):
             pass
-    return "\n".join(lines[-80:]) if lines else "No log content"
+    return {"jobs": [], "updated": None}
 
 
-def get_failed_units():
-    output, _ = run_cmd(
-        "systemctl --user --failed --no-pager 2>/dev/null | grep -E 'backup|sync|pull' "
-        "|| echo 'No failed units'"
+def get_snapshots():
+    if not Path(RESTIC_PW).exists():
+        return {"count": 0, "latest": None, "error": "Password file not found"}
+    out, ok = run(
+        f"restic -r {RESTIC_REPO} --password-file {RESTIC_PW} snapshots --compact --json 2>/dev/null"
     )
-    return output
+    if ok and out:
+        try:
+            snaps = json.loads(out)
+            latest = None
+            if snaps:
+                latest = max(s.get("time", "") for s in snaps if s.get("time"))
+            return {"count": len(snaps), "latest": latest}
+        except (json.JSONDecodeError, ValueError):
+            pass
+    return {"count": 0, "latest": None, "error": "No snapshot data"}
+
+
+def get_disk():
+    labels = {SAMSUNG: "Samsung SSD", TB: "4TB Drive"}
+    out, _ = run(f"df -h {SAMSUNG} {TB} 2>/dev/null || df -h /")
+    lines = []
+    for line in out.split("\n")[1:]:
+        parts = line.split()
+        if len(parts) >= 6:
+            mount = parts[5]
+            lines.append({
+                "label": labels.get(mount, mount),
+                "size": parts[1],
+                "used": parts[2],
+                "avail": parts[3],
+                "use_pct": parts[4],
+            })
+    return lines
+
+
+def now():
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
 
 @app.route("/")
 def index():
+    status = load_status()
     return render_template(
         "index.html",
-        now=ts(),
-        timers=get_systemd_timers()[0],
-        snapshots=get_restic_snapshots(),
-        stats=get_restic_stats(),
-        disk=get_disk_usage(),
-        failed=get_failed_units(),
-        logs=get_recent_logs(),
+        now=now(),
+        jobs=status.get("jobs", []),
+        disk=get_disk(),
+        snapshots=get_snapshots(),
     )
 
 
@@ -120,35 +98,16 @@ def health():
     return jsonify({"status": "ok"})
 
 
-@app.route("/api/timers")
-def api_timers():
-    output, _ = get_systemd_timers()
-    return render_template("sections/timers.html", output=output, now=ts())
-
-
-@app.route("/api/snapshots")
-def api_snapshots():
-    return render_template("sections/snapshots.html", snapshots=get_restic_snapshots(), now=ts())
-
-
-@app.route("/api/stats")
-def api_stats():
-    return render_template("sections/stats.html", output=get_restic_stats(), now=ts())
-
-
-@app.route("/api/disk")
-def api_disk():
-    return render_template("sections/disk.html", output=get_disk_usage(), now=ts())
-
-
-@app.route("/api/logs")
-def api_logs():
-    return render_template("sections/logs.html", output=get_recent_logs(), now=ts())
-
-
-@app.route("/api/failed")
-def api_failed():
-    return render_template("sections/failed.html", output=get_failed_units(), now=ts())
+@app.route("/api/refresh")
+def api_refresh():
+    status = load_status()
+    return render_template(
+        "dashboard.html",
+        now=now(),
+        jobs=status.get("jobs", []),
+        disk=get_disk(),
+        snapshots=get_snapshots(),
+    )
 
 
 if __name__ == "__main__":

@@ -1,6 +1,0 @@
-<span id="last-updated" hx-swap-oob="true">Updated: {{ now }}</span>
-{% if output and "0 loaded" not in output and "No failed" not in output %}
-<pre class="error-text">{{ output }}</pre>
-{% else %}
-<pre class="success-text">No failed units</pre>
-{% endif %}
