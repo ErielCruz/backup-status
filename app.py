@@ -169,8 +169,30 @@ def get_remote_sizes():
             result["local_runs_size"] = int(out.split()[0])
         except Exception:
             result["local_runs_size"] = 0
+        out, _ = run(f"find '{local_runs}' -type f 2>/dev/null | wc -l", timeout=10, env=env)
+        try:
+            result["local_runs_count"] = int(out.strip())
+        except Exception:
+            result["local_runs_count"] = 0
     else:
         result["local_runs_size"] = 0
+        result["local_runs_count"] = 0
+    
+    local_pictures = Path(os.environ.get("TB_MOUNT", "/4tb")) / "Pictures"
+    if local_pictures.exists():
+        out, _ = run(f"du -sb '{local_pictures}' 2>/dev/null", timeout=10, env=env)
+        try:
+            result["local_pictures_size"] = int(out.split()[0])
+        except Exception:
+            result["local_pictures_size"] = 0
+        out, _ = run(f"find '{local_pictures}' -type f 2>/dev/null | wc -l", timeout=10, env=env)
+        try:
+            result["local_pictures_count"] = int(out.strip())
+        except Exception:
+            result["local_pictures_count"] = 0
+    else:
+        result["local_pictures_size"] = 0
+        result["local_pictures_count"] = 0
     
     remotes = {
         "b2_runs": "backup-ssd-ecc:backup-ssd-ecc/HomeServerBackups/runs",

@@ -5,6 +5,23 @@
     <span class="badge">{{ now }}</span>
   </div>
 
+  {% if health.status == "ok" %}
+  <div class="status-banner status-banner-ok">
+    <span class="status status-pass">OK</span>
+    <span class="status-banner-text">Backups are healthy. All checks passed.</span>
+  </div>
+  {% elif health.status == "warn" %}
+  <div class="status-banner status-banner-warn">
+    <span class="status status-warn">WARN</span>
+    <span class="status-banner-text">Backups are working, but {{ health.audit_warnings }} issue{{ 's' if health.audit_warnings != 1 }} {{ 'need' if health.audit_warnings != 1 else 'needs' }} attention below.</span>
+  </div>
+  {% else %}
+  <div class="status-banner status-banner-fail">
+    <span class="status status-fail">FAIL</span>
+    <span class="status-banner-text">Backup health check failed. Review errors below immediately.</span>
+  </div>
+  {% endif %}
+
   <div class="health-bar{% if health.status == "fail" %} health-fail{% elif health.status == "warn" %} health-warn{% endif %}">
     <div class="health-item">
       <span class="health-label">Jobs</span>
@@ -39,12 +56,12 @@
       {% if health.audit_errors == 0 and health.audit_warnings == 0 %}
         <div class="status-row">
           <span class="status status-pass">PASS</span>
-          <span class="status-text">All checks passed</span>
+          <span class="status-text">All audit checks passed</span>
         </div>
       {% endif %}
       {% if audit.error_list %}
         <div class="audit-section">
-          <div class="audit-section-title">Errors ({{ audit.error_list|length }})</div>
+          <div class="audit-section-title">Errors — action required ({{ audit.error_list|length }})</div>
           <ul class="audit-list">
             {% for item in audit.error_list %}
             <li><span class="status status-fail">ERROR</span> {{ item }}</li>
@@ -54,10 +71,17 @@
       {% endif %}
       {% if audit.warning_list %}
         <div class="audit-section">
-          <div class="audit-section-title">Warnings ({{ audit.warning_list|length }})</div>
+          <div class="audit-section-title">Warnings — review below ({{ audit.warning_list|length }})</div>
           <ul class="audit-list">
             {% for item in audit.warning_list %}
-            <li><span class="status status-warn">WARN</span> {{ item }}</li>
+            <li>
+              <span class="status status-warn">WARN</span> {{ item }}
+              {% if "PhotoPrism" in item or "Permission denied" in item %}
+              <div class="audit-help">This is usually the PhotoPrism sqlite backup file, which the backup user cannot read. The backup completes successfully but skips this one file. To fix, adjust the file permissions or exclude this path from backup.</div>
+              {% elif "restic snapshot" in item and "hours old" in item %}
+              <div class="audit-help">Restic backups run daily and keep one snapshot per day. The latest snapshot is older than expected, which may indicate a recent backup failure. Check backup-full logs.</div>
+              {% endif %}
+            </li>
             {% endfor %}
           </ul>
         </div>
@@ -123,29 +147,6 @@
     {% endif %}
   </div>
 
-  {% if restic %}
-  <div class="card">
-    <div class="card-title">Restic Snapshots</div>
-    <div class="grid-3">
-      <div class="stat-box">
-        <div class="stat-label">B2</div>
-        <div class="stat-value">{{ restic.b2.count if restic.b2 else "—" }}</div>
-        <div class="stat-sub">{% if restic.b2 and restic.b2.latest %}Latest: {{ restic.b2.latest[5:16] }}{% else %}—{% endif %}</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-label">Hetzner</div>
-        <div class="stat-value">{{ restic.hetzner.count if restic.hetzner else "—" }}</div>
-        <div class="stat-sub">{% if restic.hetzner and restic.hetzner.latest %}Latest: {{ restic.hetzner.latest[5:16] }}{% else %}—{% endif %}</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-label">Secrets</div>
-        <div class="stat-value">{{ restic.secrets.count if restic.secrets else "—" }}</div>
-        <div class="stat-sub">{% if restic.secrets and restic.secrets.latest %}Latest: {{ restic.secrets.latest[5:16] }}{% else %}—{% endif %}</div>
-      </div>
-    </div>
-  </div>
-  {% endif %}
-
   {% if remotes %}
   <div class="card">
     <div class="card-title">Remote Storage Verification</div>
@@ -153,18 +154,20 @@
       <thead>
         <tr>
           <th>Destination</th>
+          <th>Local Files</th>
           <th>Local Size</th>
-          <th>Remote Size</th>
           <th>Remote Files</th>
+          <th>Remote Size</th>
           <th>Status</th>
         </tr>
       </thead>
       <tbody>
         <tr>
           <td>B2: HomeServerBackups</td>
+          <td class="td-num">{{ remotes.local_runs_count if remotes.local_runs_count else "—" }}</td>
           <td class="td-num">{{ remotes.local_runs_size | fmt_bytes if remotes.local_runs_size else "—" }}</td>
-          <td class="td-num">{{ remotes.b2_runs.bytes | fmt_bytes if remotes.b2_runs else "—" }}</td>
           <td class="td-num">{{ remotes.b2_runs.count if remotes.b2_runs else "—" }}</td>
+          <td class="td-num">{{ remotes.b2_runs.bytes | fmt_bytes if remotes.b2_runs else "—" }}</td>
           <td>
             {% if remotes.b2_runs and remotes.local_runs_size %}
               {% set diff = ((remotes.b2_runs.bytes - remotes.local_runs_size) / remotes.local_runs_size * 100) | abs %}
@@ -180,9 +183,10 @@
         </tr>
         <tr>
           <td>B2: Pictures</td>
-          <td class="td-num">—</td>
-          <td class="td-num">{{ remotes.b2_pictures.bytes | fmt_bytes if remotes.b2_pictures else "—" }}</td>
+          <td class="td-num">{{ remotes.local_pictures_count if remotes.local_pictures_count else "—" }}</td>
+          <td class="td-num">{{ remotes.local_pictures_size | fmt_bytes if remotes.local_pictures_size else "—" }}</td>
           <td class="td-num">{{ remotes.b2_pictures.count if remotes.b2_pictures else "—" }}</td>
+          <td class="td-num">{{ remotes.b2_pictures.bytes | fmt_bytes if remotes.b2_pictures else "—" }}</td>
           <td>
             {% if remotes.b2_pictures and remotes.b2_pictures.count > 0 %}
             <span class="status status-pass">OK</span>
@@ -193,9 +197,10 @@
         </tr>
         <tr>
           <td>Hetzner: Backup_SSD</td>
+          <td class="td-num">{{ remotes.local_runs_count if remotes.local_runs_count else "—" }}</td>
           <td class="td-num">{{ remotes.local_runs_size | fmt_bytes if remotes.local_runs_size else "—" }}</td>
-          <td class="td-num">{{ remotes.hetzner_runs.bytes | fmt_bytes if remotes.hetzner_runs else "—" }}</td>
           <td class="td-num">{{ remotes.hetzner_runs.count if remotes.hetzner_runs else "—" }}</td>
+          <td class="td-num">{{ remotes.hetzner_runs.bytes | fmt_bytes if remotes.hetzner_runs else "—" }}</td>
           <td>
             {% if remotes.hetzner_runs and remotes.local_runs_size %}
               {% set diff = ((remotes.hetzner_runs.bytes - remotes.local_runs_size) / remotes.local_runs_size * 100) | abs %}
@@ -211,7 +216,7 @@
         </tr>
       </tbody>
     </table>
-    <div class="stat-sub" style="margin-top:8px">Size comparison: Local vs Remote should be within 10% for "SYNCED" status</div>
+    <div class="stat-sub" style="margin-top:8px">File counts may differ slightly due to sync timing and retention. Size should be within 10% for "SYNCED" status.</div>
   </div>
   {% endif %}
 

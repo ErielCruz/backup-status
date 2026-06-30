@@ -69,6 +69,36 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+.status-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  border-radius: 10px;
+  margin-bottom: 20px;
+  border: 1px solid transparent;
+}
+
+.status-banner-ok {
+  background: rgba(34, 197, 94, 0.08);
+  border-color: rgba(34, 197, 94, 0.2);
+}
+
+.status-banner-warn {
+  background: var(--warn-bg);
+  border-color: rgba(245, 158, 11, 0.2);
+}
+
+.status-banner-fail {
+  background: var(--fail-bg);
+  border-color: rgba(239, 68, 68, 0.2);
+}
+
+.status-banner-text {
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
 .health-bar {
   display: flex;
   gap: 8px;
@@ -164,9 +194,9 @@ body {
 }
 
 .audit-list li {
-  padding: 8px 0;
+  padding: 10px 0;
   font-size: 0.85rem;
-  line-height: 1.4;
+  line-height: 1.5;
   border-bottom: 1px solid rgba(255, 255, 255, 0.03);
 }
 
@@ -178,6 +208,18 @@ body {
   font-size: 0.68rem;
   font-weight: 600;
   margin-right: 6px;
+}
+
+.audit-help {
+  display: block;
+  margin-top: 6px;
+  margin-left: 26px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 6px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  line-height: 1.4;
 }
 
 .status-row {
@@ -277,6 +319,7 @@ tr:last-child td {
   .container { padding: 16px 10px 32px; }
   .health-bar { flex-wrap: wrap; }
   .health-item { flex: 0 0 48%; }
+  .status-banner { flex-direction: column; align-items: flex-start; }
 }
 
 @media (max-width: 500px) {
@@ -305,6 +348,7 @@ tr:last-child td {
   font-size: 0.78rem;
   color: var(--text-muted);
   margin-top: 2px;
+  line-height: 1.4;
 }
 
 .usage-bar {
