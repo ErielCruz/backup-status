@@ -352,7 +352,7 @@ def get_overall_health():
 
     if failures or (audit.get("errors", 0) > 0):
         health = "fail"
-    elif verif.get("rate", 100) < 100 and verif.get("recent"):
+    elif any(r.get("verify") == "fail" for r in verif.get("recent", [])):
         health = "warn"
     elif audit.get("warnings", 0) > 0:
         health = "warn"
