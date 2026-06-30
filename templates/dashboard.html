@@ -1,8 +1,27 @@
 <div class="container" hx-get="/api/refresh" hx-trigger="every 60s" hx-swap="outerHTML">
   <div class="header">
-    <span class="dot"></span>
+    <span class="dot{% if health.status == "fail" %} dot-fail{% elif health.status == "warn" %} dot-warn{% endif %}"></span>
     <h1>Backup Dashboard</h1>
     <span class="badge">{{ now }}</span>
+  </div>
+
+  <div class="health-bar{% if health.status == "fail" %} health-fail{% elif health.status == "warn" %} health-warn{% endif %}">
+    <div class="health-item">
+      <span class="health-label">Jobs</span>
+      <span class="health-value">{{ health.job_failures }}/{{ health.job_total }} fail</span>
+    </div>
+    <div class="health-item">
+      <span class="health-label">Backup Runs</span>
+      <span class="health-value">{{ stats.runs_total }}</span>
+    </div>
+    <div class="health-item">
+      <span class="health-label">Total Stored</span>
+      <span class="health-value">{{ stats.total_size | fmt_bytes }}</span>
+    </div>
+    <div class="health-item">
+      <span class="health-label">Verified</span>
+      <span class="health-value">{{ stats.verified_passed }}/{{ stats.runs_with_verification }} pass</span>
+    </div>
   </div>
 
   <div class="card">
@@ -39,7 +58,7 @@
     {% endif %}
   </div>
 
-  <div class="grid-2">
+  <div class="grid-3">
     {% for d in disk %}
     <div class="card">
       <div class="card-title">{{ d.label }}</div>
@@ -52,14 +71,91 @@
     </div>
     {% endfor %}
     <div class="card">
-      <div class="card-title">Snapshots</div>
-      {% if snapshots.error %}
-      <div class="stat-value empty-error">—</div>
-      <div class="stat-sub">{{ snapshots.error }}</div>
-      {% else %}
-      <div class="stat-value">{{ snapshots.count }}</div>
-      <div class="stat-sub">{{ snapshots.latest[:16] if snapshots.latest else "No snapshots" }}</div>
-      {% endif %}
+      <div class="card-title">Storage Summary</div>
+      <div class="stat-value">{{ stats.total_size | fmt_bytes }}</div>
+      <div class="stat-sub">{{ stats.runs_total }} backup runs</div>
+      <div class="stat-sub" style="margin-top:2px">{{ stats.runs_with_reports }} with reports</div>
     </div>
   </div>
+
+  <div class="card">
+    <div class="card-title">Backup Run Inventory
+      <span class="card-badge">{{ runs|length }} runs</span>
+    </div>
+    {% if runs %}
+    <table>
+      <thead>
+        <tr>
+          <th>Run ID</th>
+          <th>Files</th>
+          <th>Size</th>
+          <th>Duration</th>
+          <th>Verified</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in runs[:15] %}
+        <tr>
+          <td class="td-mono">{{ r.run_id[:19] }}</td>
+          <td class="td-num">{{ r.files|length }}</td>
+          <td class="td-num">
+            {% if r.has_report %}{{ r.archive_size | fmt_bytes }}{% else %}{{ r.total_size | fmt_bytes }}{% endif %}
+          </td>
+          <td class="td-num">{{ r.duration | fmt_duration if r.duration else "—" }}</td>
+          <td>
+            {% if r.verify_pass is true %}
+            <span class="status status-pass">PASS</span>
+            {% elif r.verify_pass is false %}
+            <span class="status status-fail">FAIL</span>
+            {% else %}
+            <span class="status status-unknown">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty">No backup runs found</div>
+    {% endif %}
+  </div>
+
+  {% if verification.recent and verification.rate is defined %}
+  <div class="card">
+    <div class="card-title">Verification History
+      <span class="card-badge">{{ verification.rate }}% pass</span>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Run ID</th>
+          <th>Date</th>
+          <th>Size</th>
+          <th>Duration</th>
+          <th>Verified</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in verification.recent[:10] if r.verify != "unknown" %}
+        <tr>
+          <td class="td-mono">{{ r.run_id[:16] }}</td>
+          <td class="td-time">{{ r.started | fmt_date_short }}</td>
+          <td class="td-num">{{ r.size | fmt_bytes }}</td>
+          <td class="td-num">{{ r.duration | fmt_duration }}</td>
+          <td>
+            {% if r.verify == "pass" %}
+            <span class="status status-pass">PASS</span>
+            {% elif r.verify == "fail" %}
+            <span class="status status-fail">FAIL</span>
+            {% else %}
+            <span class="status status-unknown">—</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
 </div>
