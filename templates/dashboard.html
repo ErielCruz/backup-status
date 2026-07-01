@@ -5,222 +5,213 @@
     <span class="badge">{{ now }}</span>
   </div>
 
-  {% if health.status == "ok" %}
-  <div class="status-banner status-banner-ok">
-    <span class="status status-pass">OK</span>
-    <span class="status-banner-text">Backups are healthy. All checks passed.</span>
+  {% if health.status == "fail" %}
+  <div class="status-banner status-banner-fail">
+    <span class="status status-fail">FAIL</span>
+    <span class="status-banner-text">
+      {% if health.pipeline_failures %}Pipeline{{ 's' if health.pipeline_failures|length > 1 }} failed: {{ health.pipeline_failures | join(', ') }}.{% endif %}
+      {% if health.audit_errors > 0 %} {{ health.audit_errors }} audit error{{ 's' if health.audit_errors != 1 }}.{% endif %}
+    </span>
   </div>
   {% elif health.status == "warn" %}
   <div class="status-banner status-banner-warn">
     <span class="status status-warn">WARN</span>
-    <span class="status-banner-text">Backups are working, but {{ health.audit_warnings }} issue{{ 's' if health.audit_warnings != 1 }} {{ 'need' if health.audit_warnings != 1 else 'needs' }} attention below.</span>
-  </div>
-  {% else %}
-  <div class="status-banner status-banner-fail">
-    <span class="status status-fail">FAIL</span>
-    <span class="status-banner-text">Backup health check failed. Review errors below immediately.</span>
+    <span class="status-banner-text">{{ health.audit_warnings }} issue{{ 's' if health.audit_warnings != 1 }} need{{ 's' if health.audit_warnings == 1 else '' }} attention.</span>
   </div>
   {% endif %}
 
-  <div class="health-bar{% if health.status == "fail" %} health-fail{% elif health.status == "warn" %} health-warn{% endif %}">
-    <div class="health-item">
-      <span class="health-label">Jobs</span>
-      <span class="health-value">{{ health.job_failures }}/{{ health.job_total }} fail</span>
+  {% for pid, pipeline in status.pipelines.items() %}
+  <div class="card{% if pipeline.last_result != 'success' %} card-fail{% endif %}">
+    <div class="card-title">
+      {{ pipeline.label }}
+      <span class="card-badge">{{ pipeline.description }}</span>
     </div>
-    <div class="health-item">
-      <span class="health-label">Backup Runs</span>
-      <span class="health-value">{{ stats.runs_total }}</span>
-    </div>
-    <div class="health-item">
-      <span class="health-label">Total Stored</span>
-      <span class="health-value">{{ stats.total_size | fmt_bytes }}</span>
-    </div>
-    <div class="health-item">
-      <span class="health-label">Verified</span>
-      <span class="health-value">{{ stats.verified_passed }}/{{ stats.runs_with_verification }} pass</span>
-    </div>
-    <div class="health-item">
-      <span class="health-label">Audit</span>
-      <span class="health-value">{{ health.audit_errors }}E / {{ health.audit_warnings }}W</span>
-    </div>
-  </div>
 
-  <div class="card{% if health.status == "fail" %} card-fail{% elif health.status == "warn" %} card-warn{% endif %}">
-    <div class="card-title">Audit Check Results
-      {% if audit.last_audit %}
-      <span class="card-badge">{{ audit.last_audit[11:16] }}</span>
-      {% endif %}
-    </div>
-    {% if audit.last_audit %}
-      <div class="stat-sub" style="margin-bottom:12px">Last audit: {{ audit.last_audit }}</div>
-      {% if health.audit_errors == 0 and health.audit_warnings == 0 %}
-        <div class="status-row">
-          <span class="status status-pass">PASS</span>
-          <span class="status-text">All audit checks passed</span>
-        </div>
-      {% endif %}
-      {% if audit.error_list %}
-        <div class="audit-section">
-          <div class="audit-section-title">Errors — action required ({{ audit.error_list|length }})</div>
-          <ul class="audit-list">
-            {% for item in audit.error_list %}
-            <li><span class="status status-fail">ERROR</span> {{ item }}</li>
-            {% endfor %}
-          </ul>
-        </div>
-      {% endif %}
-      {% if audit.warning_list %}
-        <div class="audit-section">
-          <div class="audit-section-title">Warnings — review below ({{ audit.warning_list|length }})</div>
-          <ul class="audit-list">
-            {% for item in audit.warning_list %}
-            <li>
-              <span class="status status-warn">WARN</span> {{ item }}
-              {% if "PhotoPrism" in item or "Permission denied" in item %}
-              <div class="audit-help">This is usually the PhotoPrism sqlite backup file, which the backup user cannot read. The backup completes successfully but skips this one file. To fix, adjust the file permissions or exclude this path from backup.</div>
-              {% elif "restic snapshot" in item and "hours old" in item %}
-              <div class="audit-help">Restic backups run 4 times daily and keep all snapshots within 7 days. The latest snapshot is older than expected, which may indicate a recent backup failure. Check backup-system-state logs.</div>
-              {% endif %}
-            </li>
-            {% endfor %}
-          </ul>
-        </div>
-      {% endif %}
-      {% if audit.snapshots %}
-        <div class="audit-section">
-          <div class="audit-section-title">Restic Snapshots</div>
-          <div class="grid-3" style="margin-top:8px">
-            <div class="stat-box">
-              <div class="stat-label">B2</div>
-              <div class="stat-value">{{ audit.snapshots.b2 if audit.snapshots.b2 is not none else "—" }}</div>
-              <div class="stat-sub">{% if audit.b2_latest %}Latest: {{ audit.b2_latest[5:16] }}{% else %}—{% endif %}</div>
-            </div>
-            <div class="stat-box">
-              <div class="stat-label">Hetzner</div>
-              <div class="stat-value">{{ audit.snapshots.hetzner if audit.snapshots.hetzner is not none else "—" }}</div>
-              <div class="stat-sub">{% if audit.hetzner_latest %}Latest: {{ audit.hetzner_latest[5:16] }}{% else %}—{% endif %}</div>
-            </div>
-            <div class="stat-box">
-              <div class="stat-label">Secrets</div>
-              <div class="stat-value">{{ audit.snapshots.secrets if audit.snapshots.secrets is not none else "—" }}</div>
-              <div class="stat-sub">—</div>
-            </div>
-          </div>
-        </div>
-      {% endif %}
-    {% else %}
-      <div class="empty">No audit data available</div>
-    {% endif %}
-  </div>
-
-  <div class="card">
-    <div class="card-title">Jobs</div>
-    {% if jobs %}
-    <table>
-      <thead>
-        <tr>
-          <th>Job</th>
-          <th>Status</th>
-          <th>Last Run</th>
-          <th>Next</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for j in jobs %}
-        <tr>
-          <td>{{ j.name }}</td>
-          <td>
-            {% if j.last_result == "success" %}
+    <div class="pipeline-header">
+      <div class="pipeline-stat">
+        <span class="pipeline-stat-label">Last Run</span>
+        <span class="pipeline-stat-value">
+          {% if pipeline.last_run %}
+            {{ pipeline.last_run | fmt_time_ago }}
+            <span class="text-muted">({{ pipeline.last_run | fmt_date_short }})</span>
+          {% else %}
+            <span class="text-muted">never</span>
+          {% endif %}
+        </span>
+      </div>
+      <div class="pipeline-stat">
+        <span class="pipeline-stat-label">Next</span>
+        <span class="pipeline-stat-value">
+          {% if pipeline.next_run %}
+            {{ pipeline.next_run | fmt_time_ago }}
+          {% else %}
+            <span class="text-muted">\u2014</span>
+          {% endif %}
+        </span>
+      </div>
+      <div class="pipeline-stat">
+        <span class="pipeline-stat-label">Result</span>
+        <span class="pipeline-stat-value">
+          {% if pipeline.last_result == "success" %}
             <span class="status status-pass">OK</span>
-            {% else %}
-            <span class="status status-fail">FAIL</span>
-            {% endif %}
-          </td>
-          <td class="td-time">{{ j.last_run[11:16] if j.last_run else "—" }}</td>
-          <td class="td-time">{{ j.next_run[11:16] if j.next_run else "—" }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    {% else %}
-    <div class="empty">No job data yet</div>
-    {% endif %}
-  </div>
+          {% elif pipeline.last_result == "failure" or pipeline.last_result == "failed" %}
+            <span class="status status-fail">FAILED</span>
+          {% else %}
+            <span class="status status-unknown">{{ pipeline.last_result }}</span>
+          {% endif %}
+        </span>
+      </div>
+    </div>
 
-  {% if remotes %}
+    {% set sizes = remotes.get(pid, {}) %}
+    <div class="remote-grid">
+      {% for dest_key, dest_label in [("local", "Local"), ("mirror", "Mirror"), ("b2", "B2"), ("hetzner", "Hetzner")] %}
+        {% if dest_key in sizes %}
+        <div class="remote-cell">
+          <div class="remote-cell-label">{{ dest_label }}</div>
+          <div class="remote-cell-size">{{ sizes[dest_key].get("bytes", 0) | fmt_bytes }}</div>
+          {% if sizes[dest_key].get("count") %}
+          <div class="remote-cell-count">{{ sizes[dest_key]["count"] }} files</div>
+          {% endif %}
+        </div>
+        {% endif %}
+      {% endfor %}
+      {% if "source" in sizes %}
+      <div class="remote-cell">
+        <div class="remote-cell-label">Source</div>
+        <div class="remote-cell-size">{{ sizes["source"].get("bytes", 0) | fmt_bytes }}</div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+
+  {% if audit.verify_results %}
   <div class="card">
-    <div class="card-title">Remote Storage Verification</div>
+    <div class="card-title">Remote Verification
+      {% if audit.last_audit %}
+      <span class="card-badge">Audit {{ audit.last_audit[11:16] }}</span>
+      {% endif %}
+    </div>
     <table>
       <thead>
         <tr>
           <th>Destination</th>
           <th>Local Files</th>
-          <th>Local Size</th>
           <th>Remote Files</th>
+          <th>Local Size</th>
           <th>Remote Size</th>
           <th>Status</th>
         </tr>
       </thead>
       <tbody>
+        {% for v in audit.verify_results %}
         <tr>
-          <td>B2: HomeServerBackups</td>
-          <td class="td-num">{{ remotes.local_runs_count if remotes.local_runs_count else "—" }}</td>
-          <td class="td-num">{{ remotes.local_runs_size | fmt_bytes if remotes.local_runs_size else "—" }}</td>
-          <td class="td-num">{{ remotes.b2_runs.count if remotes.b2_runs else "—" }}</td>
-          <td class="td-num">{{ remotes.b2_runs.bytes | fmt_bytes if remotes.b2_runs else "—" }}</td>
+          <td>{{ v.label }}</td>
+          <td class="td-num">{{ v.local_count if v.local_count is defined else "\u2014" }}</td>
+          <td class="td-num">{{ v.remote_count if v.remote_count is defined else "\u2014" }}</td>
+          <td class="td-num">{{ v.local_size | fmt_bytes if v.local_size is defined else "\u2014" }}</td>
+          <td class="td-num">{{ v.remote_size | fmt_bytes if v.remote_size is defined else "\u2014" }}</td>
           <td>
-            {% if remotes.b2_runs and remotes.local_runs_size %}
-              {% set diff = ((remotes.b2_runs.bytes - remotes.local_runs_size) / remotes.local_runs_size * 100) | abs %}
-              {% if diff < 10 %}
-              <span class="status status-pass">SYNCED</span>
-              {% else %}
-              <span class="status status-warn">PENDING</span>
-              {% endif %}
+            {% if v.status == "ok" %}
+            <span class="status status-pass">MATCH</span>
+            {% elif v.status == "mismatch" %}
+            <span class="status status-fail">MISMATCH</span>
+            {% elif v.status == "skip" %}
+            <span class="status status-warn">SKIP</span>
             {% else %}
-            <span class="status status-unknown">—</span>
+            <span class="status status-unknown">{{ v.status }}</span>
             {% endif %}
           </td>
         </tr>
-        <tr>
-          <td>B2: Pictures</td>
-          <td class="td-num">{{ remotes.local_pictures_count if remotes.local_pictures_count else "—" }}</td>
-          <td class="td-num">{{ remotes.local_pictures_size | fmt_bytes if remotes.local_pictures_size else "—" }}</td>
-          <td class="td-num">{{ remotes.b2_pictures.count if remotes.b2_pictures else "—" }}</td>
-          <td class="td-num">{{ remotes.b2_pictures.bytes | fmt_bytes if remotes.b2_pictures else "—" }}</td>
-          <td>
-            {% if remotes.b2_pictures and remotes.b2_pictures.count > 0 %}
-            <span class="status status-pass">OK</span>
-            {% else %}
-            <span class="status status-unknown">—</span>
-            {% endif %}
-          </td>
-        </tr>
-        <tr>
-          <td>Hetzner: Backup_SSD</td>
-          <td class="td-num">{{ remotes.local_runs_count if remotes.local_runs_count else "—" }}</td>
-          <td class="td-num">{{ remotes.local_runs_size | fmt_bytes if remotes.local_runs_size else "—" }}</td>
-          <td class="td-num">{{ remotes.hetzner_runs.count if remotes.hetzner_runs else "—" }}</td>
-          <td class="td-num">{{ remotes.hetzner_runs.bytes | fmt_bytes if remotes.hetzner_runs else "—" }}</td>
-          <td>
-            {% if remotes.hetzner_runs and remotes.local_runs_size %}
-              {% set diff = ((remotes.hetzner_runs.bytes - remotes.local_runs_size) / remotes.local_runs_size * 100) | abs %}
-              {% if diff < 10 %}
-              <span class="status status-pass">SYNCED</span>
-              {% else %}
-              <span class="status status-warn">PENDING</span>
-              {% endif %}
-            {% else %}
-            <span class="status status-unknown">—</span>
-            {% endif %}
-          </td>
-        </tr>
+        {% endfor %}
       </tbody>
     </table>
-    <div class="stat-sub" style="margin-top:8px">File counts may differ slightly due to sync timing and retention. Size should be within 10% for "SYNCED" status.</div>
+    {% if audit.snapshots %}
+    <div class="audit-section">
+      <div class="audit-section-title">Restic Snapshots</div>
+      <div class="grid-3" style="margin-top:8px">
+        <div class="stat-box">
+          <div class="stat-label">B2</div>
+          <div class="stat-value">{{ audit.snapshots.b2 if audit.snapshots.b2 is not none else "\u2014" }}</div>
+          <div class="stat-sub">{% if audit.b2_latest %}Latest: {{ audit.b2_latest[5:16] }}{% else %}\u2014{% endif %}</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Hetzner</div>
+          <div class="stat-value">{{ audit.snapshots.hetzner if audit.snapshots.hetzner is not none else "\u2014" }}</div>
+          <div class="stat-sub">{% if audit.hetzner_latest %}Latest: {{ audit.hetzner_latest[5:16] }}{% else %}\u2014{% endif %}</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Secrets</div>
+          <div class="stat-value">{{ audit.snapshots.secrets if audit.snapshots.secrets is not none else "\u2014" }}</div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
   </div>
   {% endif %}
 
-  <div class="grid-3">
+  {% if audit.error_list or audit.warning_list %}
+  <div class="card{% if audit.errors > 0 %} card-fail{% elif audit.warnings > 0 %} card-warn{% endif %}">
+    <div class="card-title">Audit Issues</div>
+    {% if audit.error_list %}
+    <div class="audit-section" style="border-top:none;margin-top:0;padding-top:0">
+      <div class="audit-section-title">Errors ({{ audit.error_list|length }})</div>
+      <ul class="audit-list">
+        {% for item in audit.error_list %}
+        <li><span class="status status-fail">ERROR</span> {{ item }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+    {% if audit.warning_list %}
+    <div class="audit-section{% if not audit.error_list %}" style="border-top:none;margin-top:0;padding-top:0"{% endif %}>
+      <div class="audit-section-title">Warnings ({{ audit.warning_list|length }})</div>
+      <ul class="audit-list">
+        {% for item in audit.warning_list %}
+        <li><span class="status status-warn">WARN</span> {{ item }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if status.standalone %}
+  <div class="card">
+    <div class="card-title">Maintenance Jobs</div>
+    <table>
+      <thead>
+        <tr>
+          <th>Job</th>
+          <th>Last Run</th>
+          <th>Result</th>
+          <th>Next</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for j in status.standalone %}
+        <tr>
+          <td>{{ j.name }}</td>
+          <td class="td-time">{{ j.last_run | fmt_date_short if j.last_run else "\u2014" }}</td>
+          <td>
+            {% if j.last_result == "success" %}
+            <span class="status status-pass">OK</span>
+            {% elif j.last_result == "failure" or j.last_result == "failed" %}
+            <span class="status status-fail">FAIL</span>
+            {% else %}
+            <span class="status status-unknown">{{ j.last_result }}</span>
+            {% endif %}
+          </td>
+          <td class="td-time">{{ j.next_run | fmt_date_short if j.next_run else "\u2014" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  <div class="grid-2">
     {% for d in disk %}
     <div class="card">
       <div class="card-title">{{ d.label }}</div>
@@ -232,92 +223,5 @@
       </div>
     </div>
     {% endfor %}
-    <div class="card">
-      <div class="card-title">Storage Summary</div>
-      <div class="stat-value">{{ stats.total_size | fmt_bytes }}</div>
-      <div class="stat-sub">{{ stats.runs_total }} backup runs</div>
-      <div class="stat-sub" style="margin-top:2px">{{ stats.runs_with_reports }} with reports</div>
-    </div>
   </div>
-
-  <div class="card">
-    <div class="card-title">Backup Run Inventory
-      <span class="card-badge">{{ runs|length }} runs</span>
-    </div>
-    {% if runs %}
-    <table>
-      <thead>
-        <tr>
-          <th>Run ID</th>
-          <th>Files</th>
-          <th>Size</th>
-          <th>Duration</th>
-          <th>Verified</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for r in runs[:15] %}
-        <tr>
-          <td class="td-mono">{{ r.run_id[:19] }}</td>
-          <td class="td-num">{{ r.files|length }}</td>
-          <td class="td-num">
-            {% if r.has_report %}{{ r.archive_size | fmt_bytes }}{% else %}{{ r.total_size | fmt_bytes }}{% endif %}
-          </td>
-          <td class="td-num">{{ r.duration | fmt_duration if r.duration else "—" }}</td>
-          <td>
-            {% if r.verify_pass is true %}
-            <span class="status status-pass">PASS</span>
-            {% elif r.verify_pass is false %}
-            <span class="status status-fail">FAIL</span>
-            {% else %}
-            <span class="status status-unknown">—</span>
-            {% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    {% else %}
-    <div class="empty">No backup runs found</div>
-    {% endif %}
-  </div>
-
-  {% if verification.recent and verification.rate is defined %}
-  <div class="card">
-    <div class="card-title">Verification History
-      <span class="card-badge">{{ verification.rate }}% pass</span>
-    </div>
-    <table>
-      <thead>
-        <tr>
-          <th>Run ID</th>
-          <th>Date</th>
-          <th>Size</th>
-          <th>Duration</th>
-          <th>Verified</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for r in verification.recent[:10] if r.verify != "unknown" %}
-        <tr>
-          <td class="td-mono">{{ r.run_id[:16] }}</td>
-          <td class="td-time">{{ r.started | fmt_date_short }}</td>
-          <td class="td-num">{{ r.size | fmt_bytes }}</td>
-          <td class="td-num">{{ r.duration | fmt_duration }}</td>
-          <td>
-            {% if r.verify == "pass" %}
-            <span class="status status-pass">PASS</span>
-            {% elif r.verify == "fail" %}
-            <span class="status status-fail">FAIL</span>
-            {% else %}
-            <span class="status status-unknown">—</span>
-            {% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  {% endif %}
-
 </div>
