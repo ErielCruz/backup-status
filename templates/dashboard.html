@@ -79,7 +79,7 @@
               {% if "PhotoPrism" in item or "Permission denied" in item %}
               <div class="audit-help">This is usually the PhotoPrism sqlite backup file, which the backup user cannot read. The backup completes successfully but skips this one file. To fix, adjust the file permissions or exclude this path from backup.</div>
               {% elif "restic snapshot" in item and "hours old" in item %}
-              <div class="audit-help">Restic backups run daily and keep one snapshot per day. The latest snapshot is older than expected, which may indicate a recent backup failure. Check backup-full logs.</div>
+              <div class="audit-help">Restic backups run 4 times daily and keep all snapshots within 7 days. The latest snapshot is older than expected, which may indicate a recent backup failure. Check backup-system-state logs.</div>
               {% endif %}
             </li>
             {% endfor %}
