@@ -227,22 +227,49 @@ def get_remote_sizes():
         except Exception:
             pass
 
+    mirror_photos = Path(SAMSUNG) / "Backup_SSD" / "Photos"
+    if mirror_photos.exists():
+        out, _ = run(f"du -sb '{mirror_photos}' 2>/dev/null", timeout=10, env_vars=run_env)
+        try:
+            result["pictures"]["mirror"]["bytes"] = result["pictures"]["mirror"].get("bytes", 0) + int(out.split()[0])
+        except Exception:
+            pass
+
+    mirror_videos = Path(SAMSUNG) / "Backup_SSD" / "Videos"
+    if mirror_videos.exists():
+        out, _ = run(f"du -sb '{mirror_videos}' 2>/dev/null", timeout=10, env_vars=run_env)
+        try:
+            result["pictures"]["mirror"]["bytes"] = result["pictures"]["mirror"].get("bytes", 0) + int(out.split()[0])
+        except Exception:
+            pass
+
     remotes = {
         ("system_state", "b2"): "backup-ssd-ecc:backup-ssd-ecc/HomeServerBackups",
         ("system_state", "hetzner"): "hetzner-4tb:Backup_SSD/HomeServerBackups",
-        ("pictures", "b2"): "pictures-ecc:pictures-ecc",
-        ("pictures", "hetzner"): "hetzner-4tb:Pictures",
+        ("pictures", "b2"): ["pictures-ecc:pictures-ecc/Pictures", "pictures-ecc:pictures-ecc/Photos", "pictures-ecc:pictures-ecc/Videos"],
+        ("pictures", "hetzner"): ["hetzner-4tb:Pictures/Pictures", "hetzner-4tb:Pictures/Photos", "hetzner-4tb:Pictures/Videos"],
         ("long_term", "hetzner"): "hetzner-4tb:Long_Term_Backup",
     }
 
     for (pipeline, dest), remote in remotes.items():
         try:
-            out, ok = run(f"rclone size --json '{remote}' 2>/dev/null", timeout=60, env_vars=run_env)
-            if ok and out:
-                info = json.loads(out)
-                result[pipeline][dest] = {"count": info.get("count", 0), "bytes": info.get("bytes", 0)}
+            if isinstance(remote, list):
+                total_count = 0
+                total_bytes = 0
+                for r in remote:
+                    out, ok = run(f"rclone size --json '{r}' 2>/dev/null", timeout=60, env_vars=run_env)
+                    if ok and out:
+                        info = json.loads(out)
+                        total_count += info.get("count", 0)
+                        total_bytes += info.get("bytes", 0)
+                result[pipeline][dest] = {"count": total_count, "bytes": total_bytes}
             else:
-                result[pipeline][dest] = {"count": 0, "bytes": 0}
+                out, ok = run(f"rclone size --json '{remote}' 2>/dev/null", timeout=60, env_vars=run_env)
+                if ok and out:
+                    info = json.loads(out)
+                    result[pipeline][dest] = {"count": info.get("count", 0), "bytes": info.get("bytes", 0)}
+                else:
+                    result[pipeline][dest] = {"count": 0, "bytes": 0}
         except Exception:
             result[pipeline][dest] = {"count": 0, "bytes": 0}
 
