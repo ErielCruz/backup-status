@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import json
 import os
+import re
 import subprocess
 import threading
 import time
@@ -61,6 +62,19 @@ PIPELINES = {
 }
 
 STANDALONE_UNITS = ["backup-restore-test", "log-rotate", "pull-dockge-compose", "backup-status-collector"]
+
+CHAINED_AFTER = {
+    "backup-critical-secrets": "after system backup",
+    "sync-local-backup-ssd": "after secrets",
+    "sync-local-pictures-ssd": "after Backup_SSD local mirror",
+    "sync-local-pictures": "after Pictures SSD mirror",
+    "sync-remote-b2-backup-ssd": "after local Pictures mirror",
+    "sync-remote-b2-pictures": "after B2 Backup_SSD mirror",
+    "sync-remote-hetzner-backup-ssd": "after B2 Pictures mirror",
+    "sync-remote-hetzner-pictures": "after Hetzner Backup_SSD mirror",
+    "backup-audit": "after Hetzner Pictures mirror",
+    "sync-remote-hetzner-long-term": "after audit",
+}
 
 RESTIC_REPOS = {
     "system_ssd": {
@@ -303,6 +317,17 @@ def parse_systemd_timestamp(value):
         return value
 
 
+def parse_journal_timestamp(line):
+    match = re.match(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:[+-]\d{2}:\d{2}|Z))", line)
+    if not match:
+        return None
+    try:
+        value = match.group(1).replace("Z", "+00:00")
+        return datetime.fromisoformat(value).astimezone(timezone.utc).isoformat()
+    except Exception:
+        return None
+
+
 def load_json_file(path, default):
     if path.is_file():
         try:
@@ -315,6 +340,21 @@ def load_json_file(path, default):
 def get_unit_logs(name, lines=20):
     args = [
         "journalctl",
+        "--no-pager",
+        "--since",
+        "7 days ago",
+        "--grep",
+        f"{name}.service",
+        "-n",
+        str(lines),
+        "--output=short-iso",
+    ]
+    out, ok = run_args(args, timeout=10, env_vars=SYSTEMD_ENV)
+    if ok and out and "-- No entries --" not in out:
+        return out.splitlines()
+
+    args = [
+        "journalctl",
         f"_UID={USER_UID}",
         f"_SYSTEMD_USER_UNIT={name}.service",
         "--no-pager",
@@ -323,21 +363,28 @@ def get_unit_logs(name, lines=20):
         "--output=short-iso",
     ]
     out, ok = run_args(args, timeout=10, env_vars=SYSTEMD_ENV)
-    if ok and out:
-        return out.splitlines()
-
-    args = [
-        "journalctl",
-        f"_UID={USER_UID}",
-        "--no-pager",
-        "-n",
-        str(lines * 5),
-        "--output=short-iso",
-    ]
-    out, ok = run_args(args, timeout=10, env_vars=SYSTEMD_ENV)
     if not ok or not out:
         return []
     return [line for line in out.splitlines() if f"{name}.service" in line or f"{name}." in line][-lines:]
+
+
+def last_run_from_logs(lines):
+    finished = []
+    started = []
+    for line in lines:
+        if "Finished " in line or "Failed to start " in line or "Main process exited" in line:
+            ts = parse_journal_timestamp(line)
+            if ts:
+                finished.append(ts)
+        elif "Starting " in line:
+            ts = parse_journal_timestamp(line)
+            if ts:
+                started.append(ts)
+    if finished:
+        return max(finished)
+    if started:
+        return max(started)
+    return None
 
 
 def get_unit_info(name, fallback=None):
@@ -379,7 +426,15 @@ def get_unit_info(name, fallback=None):
             timeout=8,
             env_vars=SYSTEMD_ENV,
         )
-        last_run = parse_systemd_timestamp(last_trigger) or parse_systemd_timestamp(inactive_ts) or parse_systemd_timestamp(active_ts)
+        logs = get_unit_logs(name, 15)
+        last_run = (
+            parse_systemd_timestamp(last_trigger)
+            or parse_systemd_timestamp(inactive_ts)
+            or parse_systemd_timestamp(active_ts)
+            or last_run_from_logs(logs)
+            or (fallback or {}).get("last_run")
+        )
+        next_run = parse_systemd_timestamp(next_out)
         if active_state in ("active", "activating"):
             last_result = "running"
         elif result:
@@ -390,24 +445,47 @@ def get_unit_info(name, fallback=None):
             last_result = "never-run" if not last_run else "unknown"
         return {
             "name": name,
-            "next_run": parse_systemd_timestamp(next_out),
+            "next_run": next_run,
+            "next_label": None if next_run else CHAINED_AFTER.get(name),
             "last_run": last_run,
             "last_result": last_result,
             "exit_code": exit_code,
             "active_state": active_state,
             "sub_state": sub_state,
             "timer_active": timer_state == "active",
-            "last_lines": get_unit_logs(name, 15),
+            "last_lines": logs,
             "source": "live",
         }
 
     if fallback:
         copy = dict(fallback)
         copy["source"] = "collector"
+        copy.setdefault("next_label", CHAINED_AFTER.get(name))
+        logs = get_unit_logs(name, 15)
+        if logs:
+            copy["last_lines"] = logs
+            copy["last_run"] = copy.get("last_run") or last_run_from_logs(logs)
+            copy["source"] = "journal"
         return copy
+    logs = get_unit_logs(name, 15)
+    if logs:
+        return {
+            "name": name,
+            "next_run": None,
+            "next_label": CHAINED_AFTER.get(name),
+            "last_run": last_run_from_logs(logs),
+            "last_result": "unknown",
+            "exit_code": "",
+            "active_state": "unknown",
+            "sub_state": "unknown",
+            "timer_active": False,
+            "last_lines": logs,
+            "source": "journal",
+        }
     return {
         "name": name,
         "next_run": None,
+        "next_label": CHAINED_AFTER.get(name),
         "last_run": None,
         "last_result": "unknown",
         "exit_code": "",
@@ -430,12 +508,15 @@ def load_status():
         failures = [u for u in units if u.get("last_result") in ("failure", "failed")]
         running = [u for u in units if u.get("last_result") == "running"]
         parent = units[0] if units else {}
+        next_unit = next((u for u in units if u.get("next_run")), parent)
+        last_unit = next((u for u in units if u.get("last_run")), parent)
         status["pipelines"][pid] = {
             "label": definition["label"],
             "description": definition["description"],
-            "last_run": parent.get("last_run"),
+            "last_run": last_unit.get("last_run"),
             "last_result": "failed" if failures else ("running" if running else parent.get("last_result", "unknown")),
-            "next_run": parent.get("next_run"),
+            "next_run": next_unit.get("next_run"),
+            "next_label": None if next_unit.get("next_run") else parent.get("next_label"),
             "units": units,
         }
 
@@ -495,7 +576,7 @@ def compare_to_source(items):
     mismatched = []
     unknown = []
     for item in items:
-        if item["status"] != "ok":
+        if item["status"] not in ("ok", "stale"):
             unknown.append(item)
             continue
         item["count_delta"] = item["count"] - source["count"]
@@ -541,6 +622,27 @@ def build_mirror_placeholders():
     return groups
 
 
+def audit_size_fallback(group_id, label):
+    audit = get_audit_state()
+    audit_by_label = {item.get("label"): item for item in audit.get("verify_results", [])}
+    if group_id != "live_pictures":
+        return None
+    if label in ("Linux source", "B2"):
+        source = audit_by_label.get("B2:Pictures")
+        if not source:
+            return None
+        return {
+            "count": source.get("remote_count" if label == "B2" else "local_count"),
+            "bytes": source.get("remote_size" if label == "B2" else "local_size"),
+        }
+    if label == "Hetzner":
+        source = audit_by_label.get("Hetzner:Pictures")
+        if not source:
+            return None
+        return {"count": source.get("remote_count"), "bytes": source.get("remote_size")}
+    return None
+
+
 def compute_mirror_checks():
     groups = []
     for group in MIRROR_GROUPS:
@@ -556,6 +658,12 @@ def compute_mirror_checks():
                     info = future.result()
                 except Exception as exc:
                     info = {"count": None, "bytes": None, "status": "error", "error": str(exc)}
+                if info.get("status") == "error":
+                    fallback = audit_size_fallback(group["id"], label)
+                    if fallback and fallback.get("count") is not None and fallback.get("bytes") is not None:
+                        info.update(fallback)
+                        info["status"] = "stale"
+                        info["error"] = "Live size check timed out; showing last audit value."
                 info.update({"label": label, "target": target})
                 items.append(info)
         order = {label: index for index, (label, _target, _excludes) in enumerate(group["items"])}

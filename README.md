@@ -33,6 +33,12 @@ Restic repos are not compared by raw file size because restic is deduplicated an
 
 The first page render does not wait for every remote provider. It loads immediately from live systemd state and the last audit, then refreshes restic and rclone parity checks in the background. Slow providers show `LOADING`, `UNKNOWN`, or the provider error instead of blocking the dashboard.
 
+Loading the site does not start `backup-audit.service`. The dashboard only reads `/state/audit-latest.json`; scheduled/chained backup services run the audit.
+
+Some services are chained instead of timer-driven. For those rows, `Next Run` shows the upstream trigger, for example `after secrets`, instead of a blank timer value. If systemd does not expose a timestamp for a completed oneshot service, the dashboard derives `Last Run` from the latest journal `Finished`/`Failed` line.
+
+Hetzner Pictures can be slow to list with `rclone size`. If the live size check times out, the dashboard falls back to the last audit value and marks that row as an audit-backed value instead of a confirmed live check.
+
 ## Deployment
 
 The running container is defined outside this repo:

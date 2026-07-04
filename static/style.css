@@ -367,6 +367,11 @@ tr:last-child td {
   font-size: 0.76rem;
 }
 
+.td-warn {
+  color: var(--amber);
+  font-size: 0.78rem;
+}
+
 .unit-name {
   font-family: ui-monospace, monospace;
   font-size: 0.79rem;

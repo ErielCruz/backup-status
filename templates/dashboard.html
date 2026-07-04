@@ -100,8 +100,16 @@
       </div>
       <div class="pipeline-stat">
         <span class="pipeline-stat-label">Next Run</span>
-        <span class="pipeline-stat-value">{{ pipeline.next_run | fmt_time_ago if pipeline.next_run else "-" }}</span>
-        <span class="stat-sub">{{ pipeline.next_run | fmt_date_short if pipeline.next_run else "-" }}</span>
+        <span class="pipeline-stat-value">
+          {% if pipeline.next_run %}
+            {{ pipeline.next_run | fmt_time_ago }}
+          {% elif pipeline.next_label %}
+            chained
+          {% else %}
+            -
+          {% endif %}
+        </span>
+        <span class="stat-sub">{{ pipeline.next_run | fmt_date_short if pipeline.next_run else (pipeline.next_label or "-") }}</span>
       </div>
       <div class="pipeline-stat">
         <span class="pipeline-stat-label">Source</span>
@@ -138,7 +146,15 @@
               {% endif %}
             </td>
             <td class="td-time">{{ unit.last_run | fmt_time_ago if unit.last_run else "-" }}</td>
-            <td class="td-time">{{ unit.next_run | fmt_time_ago if unit.next_run else "-" }}</td>
+            <td class="td-time">
+              {% if unit.next_run %}
+                {{ unit.next_run | fmt_time_ago }}
+              {% elif unit.next_label %}
+                {{ unit.next_label }}
+              {% else %}
+                -
+              {% endif %}
+            </td>
             <td class="td-time">{{ unit.active_state }}/{{ unit.sub_state }}</td>
             <td class="unit-actions">
               <button class="btn-log" onclick="toggleLogs('{{ unit.name }}')" title="Show logs">Log</button>
@@ -204,6 +220,10 @@
             {% if item.status == "error" %}
             <tr>
               <td colspan="5" class="td-error">{{ item.error }}</td>
+            </tr>
+            {% elif item.status == "stale" %}
+            <tr>
+              <td colspan="5" class="td-warn">Live check timed out; showing last audit value.</td>
             </tr>
             {% endif %}
             {% endfor %}
