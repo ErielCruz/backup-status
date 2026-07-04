@@ -395,65 +395,6 @@ def parse_log_lines(lines):
     return [parse_log_line(line) for line in lines]
 
 
-def log_message(line):
-    return parse_log_line(line).get("message", line)
-
-
-def is_noise_log_line(line):
-    message = log_message(line).strip()
-    if not message:
-        return True
-    if set(message) <= {"-"}:
-        return True
-    if re.match(r"^\d+\s+snapshots?$", message, flags=re.IGNORECASE):
-        return True
-    if re.match(r"^[0-9a-f]{8,}\s+\d{4}-\d{2}-\d{2}\s+", message):
-        return True
-    noise_patterns = (
-        "timestamps shown in ",
-        "keep 1 snapshots",
-        "id        time                 host",
-        "weekly snapshot",
-        "monthly snapshot",
-        "returned to group",
-        "/host_state",
-        "/db_dumps",
-        "/container_sensitive",
-        "/docker",
-    )
-    lowered = message.lower()
-    return any(pattern in lowered for pattern in noise_patterns)
-
-
-def is_important_log_line(line):
-    lowered = log_message(line).lower()
-    important_patterns = (
-        "completed successfully",
-        "backup completed",
-        "preserved staging dir",
-        "finished ",
-        "completed ",
-        "failed",
-        "failure",
-        "error",
-        "warning",
-        "timed out",
-        "consumed ",
-        "starting ",
-        "started ",
-    )
-    return any(pattern in lowered for pattern in important_patterns)
-
-
-def relevant_log_lines(lines, limit=6):
-    ordered = sort_log_lines(lines)
-    preferred = [line for line in ordered if is_important_log_line(line) and not is_noise_log_line(line)]
-    if len(preferred) >= limit:
-        return preferred[:limit]
-    fallback = [line for line in ordered if not is_noise_log_line(line) and line not in preferred]
-    return (preferred + fallback)[:limit]
-
-
 def load_json_file(path, default):
     if path.is_file():
         try:
@@ -504,7 +445,7 @@ def is_future_iso(iso, grace_seconds=60):
 def get_unit_logs(name, lines=20):
     collector_lines = get_collector_unit_logs(name)
     if collector_lines:
-        return collector_lines[:lines]
+        return sort_log_lines(collector_lines)[:lines]
 
     args = [
         "journalctl",
@@ -1081,23 +1022,6 @@ def get_disk():
     return rows
 
 
-def get_recent_logs(status):
-    important = []
-    units = []
-    for pipeline in status.get("pipelines", {}).values():
-        units.extend(pipeline.get("units", []))
-    units.extend(status.get("standalone", []))
-
-    priority = [u for u in units if u.get("last_result") in ("failure", "failed", "running")]
-    if not priority:
-        priority = [u for u in units if u.get("name") in ("backup-system-state", "backup-audit", "sync-remote-hetzner-pictures")]
-    for unit in priority[:5]:
-        lines = relevant_log_lines(unit.get("last_lines", []), 6)
-        if lines:
-            important.append({"unit": unit["name"], "lines": lines, "entries": parse_log_lines(lines)})
-    return important
-
-
 def get_overall_health(status, audit, mirrors, restic):
     issues = []
     warnings = []
@@ -1160,7 +1084,6 @@ def build_context():
         "audit": audit,
         "audit_verify_rows": format_audit_verifications(audit),
         "history": load_failure_history(),
-        "recent_logs": get_recent_logs(status),
     }
 
 

@@ -471,17 +471,6 @@ tr:last-child td {
   padding: 6px;
 }
 
-.log-snippet {
-  margin-top: 12px;
-}
-
-.log-title {
-  color: var(--text-muted);
-  font-family: ui-monospace, monospace;
-  font-size: 0.78rem;
-  margin-bottom: 6px;
-}
-
 .log-entry {
   display: grid;
   grid-template-columns: 70px 58px minmax(0, 1fr);

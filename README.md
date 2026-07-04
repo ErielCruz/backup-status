@@ -6,7 +6,7 @@ Web dashboard at <https://backup.erielcruz.com> for the home server backup syste
 
 - Are backup and sync runs healthy right now?
 - Which unit last ran, when did it run, and when is it scheduled next?
-- What are the latest useful logs when something is failing or running?
+- What are the latest logs for a specific backup or sync unit?
 - Do raw mirrors match by file count and byte size?
 - Do restic snapshot repos have recent snapshots?
 - How full are the local source drives?
@@ -24,7 +24,7 @@ Restic repos are not compared by raw file size because restic is deduplicated an
 
 In `Last Audit Verification`, restic rows show snapshot evidence such as snapshot count and latest snapshot time. Raw mirror rows show local and remote file counts/sizes.
 
-Logs are parsed into readable time, level, and message fields. Severity labels only flag explicit failures, nonzero error/warning counts, warnings, and timeouts; expected audit notes such as skipped weekly deep verify windows stay informational. The log API prefers the collector's latest-invocation `status.json` lines, falling back to journald only when collector lines are unavailable. Older journal history is intentionally left for manual investigation.
+Logs are parsed into readable time, level, and message fields. Severity labels only flag explicit failures, nonzero error/warning counts, warnings, and timeouts; expected audit notes such as skipped weekly deep verify windows stay informational. The log API prefers the collector's latest-invocation `status.json` lines, falling back to journald only when collector lines are unavailable. Unit log drawers show newest lines first. Older journal history is intentionally left for manual investigation.
 
 ## Healthchecks Role
 
@@ -57,7 +57,7 @@ service health while preserving the checks needed to prove backups are complete.
 - Rclone `size --json` for raw mirror count and size checks
 - `df -h` for Samsung SSD, 4TB, and Pictures source capacity
 
-The first page render does not wait for every remote provider. It loads immediately from live systemd state and the last audit, then refreshes restic and rclone parity checks in the background. Slow providers show `LOADING`, `UNKNOWN`, or the provider error instead of blocking the dashboard.
+The first page render does not wait for every remote provider. It loads immediately from live systemd state and the last audit, then refreshes restic and rclone parity checks in the background. Slow providers show `LOADING`, `UNKNOWN`, or the provider error instead of blocking the dashboard. The dashboard does not automatically swap the whole page on a timer, so opened unit log drawers stay open until the user closes them or reloads the page.
 
 Mirror parity checks are persisted in `/state/mirror-checks-latest.json`. The web app reuses that saved result when no relevant sync or audit service has completed since the check. A full `rclone size` comparison only starts when the saved result is missing or a newer sync/audit run exists. This keeps page loads cheap and avoids re-counting remote files just because the dashboard was opened.
 

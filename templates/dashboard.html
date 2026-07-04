@@ -1,4 +1,4 @@
-<div class="container" hx-get="/api/refresh" hx-trigger="every 60s" hx-swap="outerHTML">
+<div class="container">
   <div class="header">
     <span class="dot{% if health.status == "fail" %} dot-fail{% elif health.status == "warn" %} dot-warn{% endif %}"></span>
     <h1>Backup Status</h1>
@@ -71,6 +71,51 @@
       <div class="stat-sub">{{ backup_next | fmt_date_short if backup_next else "Timer unavailable" }}</div>
     </div>
   </div>
+
+  {% if audit_verify_rows %}
+  <div class="card">
+    <div class="card-title">Last Audit Verification</div>
+    <div class="table-wrap">
+      <table class="audit-table">
+        <colgroup>
+          <col class="audit-check">
+          <col class="audit-kind">
+          <col class="audit-evidence">
+          <col class="audit-evidence">
+          <col class="audit-status">
+        </colgroup>
+        <thead>
+          <tr>
+            <th>Check</th>
+            <th>Type</th>
+            <th>Local Evidence</th>
+            <th>Remote Evidence</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for v in audit_verify_rows %}
+          <tr>
+            <td>{{ v.label }}</td>
+            <td>{{ v.kind }}</td>
+            <td>{{ v.local }}</td>
+            <td>{{ v.remote }}</td>
+            <td>
+              {% if v.status == "ok" %}
+                <span class="status status-pass">OK</span>
+              {% elif v.status == "mismatch" %}
+                <span class="status status-fail">MISMATCH</span>
+              {% else %}
+                <span class="status status-warn">{{ v.status }}</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
 
   {% for pid, pipeline in status.pipelines.items() %}
   <div class="card{% if pipeline.last_result in ['failure', 'failed'] %} card-fail{% elif pipeline.last_result == 'running' %} card-warn{% endif %}">
@@ -281,71 +326,6 @@
       {% endfor %}
     </div>
   </div>
-
-  {% if audit_verify_rows %}
-  <div class="card">
-    <div class="card-title">Last Audit Verification</div>
-    <div class="table-wrap">
-      <table class="audit-table">
-        <colgroup>
-          <col class="audit-check">
-          <col class="audit-kind">
-          <col class="audit-evidence">
-          <col class="audit-evidence">
-          <col class="audit-status">
-        </colgroup>
-        <thead>
-          <tr>
-            <th>Check</th>
-            <th>Type</th>
-            <th>Local Evidence</th>
-            <th>Remote Evidence</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for v in audit_verify_rows %}
-          <tr>
-            <td>{{ v.label }}</td>
-            <td>{{ v.kind }}</td>
-            <td>{{ v.local }}</td>
-            <td>{{ v.remote }}</td>
-            <td>
-              {% if v.status == "ok" %}
-                <span class="status status-pass">OK</span>
-              {% elif v.status == "mismatch" %}
-                <span class="status status-fail">MISMATCH</span>
-              {% else %}
-                <span class="status status-warn">{{ v.status }}</span>
-              {% endif %}
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
-  {% endif %}
-
-  {% if recent_logs %}
-  <div class="card">
-    <div class="card-title">Latest Relevant Logs</div>
-    {% for entry in recent_logs %}
-    <div class="log-snippet">
-      <div class="log-title">{{ entry.unit }}</div>
-      <div class="log-output">
-        {% for line in entry.entries %}
-        <div class="log-entry log-{{ line.level }}">
-          <span class="log-time">{{ line.time }}</span>
-          <span class="log-level">{{ line.level }}</span>
-          <span class="log-message">{{ line.message }}</span>
-        </div>
-        {% endfor %}
-      </div>
-    </div>
-    {% endfor %}
-  </div>
-  {% endif %}
 
   {% if status.standalone %}
   <div class="card">
