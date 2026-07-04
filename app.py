@@ -381,6 +381,13 @@ def max_iso(values):
     return max(dates).isoformat()
 
 
+def is_future_iso(iso, grace_seconds=60):
+    dt = iso_to_utc(iso)
+    if not dt:
+        return False
+    return (dt - datetime.now(timezone.utc)).total_seconds() > grace_seconds
+
+
 def get_unit_logs(name, lines=20):
     args = [
         "journalctl",
@@ -428,6 +435,15 @@ def last_run_from_logs(lines):
         return max(finished)
     if started:
         return max(started)
+    return None
+
+
+def result_from_logs(lines):
+    for line in lines:
+        if "Failed to start " in line or "Main process exited" in line:
+            return "failure"
+        if "Finished " in line:
+            return "success"
     return None
 
 
@@ -507,8 +523,12 @@ def get_unit_info(name, fallback=None):
         copy.setdefault("next_label", CHAINED_AFTER.get(name))
         logs = get_unit_logs(name, 15)
         if logs:
+            log_last_run = last_run_from_logs(logs)
             copy["last_lines"] = logs
-            copy["last_run"] = copy.get("last_run") or last_run_from_logs(logs)
+            if not copy.get("last_run") or is_future_iso(copy.get("last_run")):
+                copy["last_run"] = log_last_run
+            if copy.get("last_result") in (None, "", "unknown", "never-run"):
+                copy["last_result"] = result_from_logs(logs) or copy.get("last_result", "unknown")
             copy["source"] = "journal"
         return copy
     logs = get_unit_logs(name, 15)
@@ -518,7 +538,7 @@ def get_unit_info(name, fallback=None):
             "next_run": None,
             "next_label": CHAINED_AFTER.get(name),
             "last_run": last_run_from_logs(logs),
-            "last_result": "unknown",
+            "last_result": result_from_logs(logs) or "unknown",
             "exit_code": "",
             "active_state": "unknown",
             "sub_state": "unknown",
