@@ -24,6 +24,7 @@ PICTURES = env("PICTURES_MOUNT", "/pictures")
 LOG_DIR = env("LOG_DIR", "/logs")
 STATE_DIR = env("STATE_DIR", "/state")
 AUDIT_STATE = Path(STATE_DIR) / "audit-latest.json"
+MIRROR_CACHE_FILE = Path(STATE_DIR) / "mirror-checks-latest.json"
 RESTIC_PASSWORD_FILE = env("RESTIC_PASSWORD_FILE", "/run/secrets/restic_password")
 STATUS_FILE = Path(LOG_DIR) / "status.json"
 HISTORY_FILE = Path(LOG_DIR) / "failure_history.json"
@@ -62,6 +63,18 @@ PIPELINES = {
 }
 
 STANDALONE_UNITS = ["backup-restore-test", "log-rotate", "pull-dockge-compose", "backup-status-collector"]
+
+MIRROR_TRIGGER_UNITS = [
+    "sync-local-backup-ssd",
+    "sync-local-pictures-ssd",
+    "sync-local-pictures",
+    "sync-remote-b2-backup-ssd",
+    "sync-remote-b2-pictures",
+    "sync-remote-hetzner-backup-ssd",
+    "sync-remote-hetzner-pictures",
+    "backup-audit",
+    "sync-remote-hetzner-long-term",
+]
 
 CHAINED_AFTER = {
     "backup-critical-secrets": "after system backup",
@@ -337,6 +350,37 @@ def load_json_file(path, default):
     return default
 
 
+def write_json_file(path, data):
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp_path = path.with_suffix(path.suffix + ".tmp")
+        tmp_path.write_text(json.dumps(data, indent=2, sort_keys=True))
+        tmp_path.replace(path)
+        return True
+    except Exception:
+        return False
+
+
+def iso_to_utc(iso):
+    if not iso:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(iso).replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except Exception:
+        return None
+
+
+def max_iso(values):
+    dates = [iso_to_utc(value) for value in values if value]
+    dates = [date for date in dates if date]
+    if not dates:
+        return None
+    return max(dates).isoformat()
+
+
 def get_unit_logs(name, lines=20):
     args = [
         "journalctl",
@@ -569,6 +613,16 @@ def rclone_size(target, excludes=None, timeout=90):
         return {"count": None, "bytes": None, "status": "error", "error": str(exc)}
 
 
+def mirror_timeout(group_id, label, target):
+    if group_id == "live_pictures" and label == "Hetzner":
+        return 300
+    if str(target).startswith("hetzner-4tb:Pictures/"):
+        return 180
+    if str(target).startswith("hetzner-4tb:"):
+        return 120
+    return 60
+
+
 def compare_to_source(items):
     source = next((item for item in items if item["count"] is not None and item["bytes"] is not None), None)
     if not source:
@@ -591,26 +645,11 @@ def compare_to_source(items):
 
 
 def build_mirror_placeholders():
-    audit = get_audit_state()
-    audit_by_label = {item.get("label"): item for item in audit.get("verify_results", [])}
     groups = []
     for group in MIRROR_GROUPS:
         items = []
         for label, target, _excludes in group["items"]:
             info = {"label": label, "target": target, "count": None, "bytes": None, "status": "loading"}
-            if group["id"] == "live_pictures":
-                if label in ("Linux source", "B2"):
-                    source = audit_by_label.get("B2:Pictures")
-                    if source:
-                        info["count"] = source.get("remote_count" if label == "B2" else "local_count")
-                        info["bytes"] = source.get("remote_size" if label == "B2" else "local_size")
-                        info["status"] = "ok"
-                if label == "Hetzner":
-                    source = audit_by_label.get("Hetzner:Pictures")
-                    if source:
-                        info["count"] = source.get("remote_count")
-                        info["bytes"] = source.get("remote_size")
-                        info["status"] = "ok"
             items.append(info)
         groups.append({
             "id": group["id"],
@@ -623,33 +662,43 @@ def build_mirror_placeholders():
 
 
 def audit_size_fallback(group_id, label):
-    audit = get_audit_state()
-    audit_by_label = {item.get("label"): item for item in audit.get("verify_results", [])}
-    if group_id != "live_pictures":
-        return None
-    if label in ("Linux source", "B2"):
-        source = audit_by_label.get("B2:Pictures")
-        if not source:
-            return None
-        return {
-            "count": source.get("remote_count" if label == "B2" else "local_count"),
-            "bytes": source.get("remote_size" if label == "B2" else "local_size"),
-        }
-    if label == "Hetzner":
-        source = audit_by_label.get("Hetzner:Pictures")
-        if not source:
-            return None
-        return {"count": source.get("remote_count"), "bytes": source.get("remote_size")}
+    # The audit's Pictures result is combined:
+    # ~/Pictures + Backup_SSD/Photos + Backup_SSD/Videos.
+    # It must not be used as a fallback for the Live Pictures-only row.
     return None
 
 
-def compute_mirror_checks():
+def mirror_trigger_timestamp(status, audit):
+    runs = [audit.get("audit_time")]
+    for pipeline in status.get("pipelines", {}).values():
+        for unit in pipeline.get("units", []):
+            if unit.get("name") in MIRROR_TRIGGER_UNITS:
+                runs.append(unit.get("last_run"))
+    return max_iso(runs)
+
+
+def load_mirror_cache():
+    data = cached("mirror_checks_record")
+    if data is not None:
+        return data
+    record = load_json_file(MIRROR_CACHE_FILE, {})
+    if record.get("groups"):
+        set_cache("mirror_checks_record", record, ttl=3600)
+    return record
+
+
+def save_mirror_cache(record):
+    set_cache("mirror_checks_record", record, ttl=3600)
+    write_json_file(MIRROR_CACHE_FILE, record)
+
+
+def compute_mirror_checks(trigger_ts=None):
     groups = []
     for group in MIRROR_GROUPS:
         items = []
         with ThreadPoolExecutor(max_workers=min(6, len(group["items"]))) as executor:
             futures = {
-                executor.submit(rclone_size, target, excludes, 60): (label, target)
+                executor.submit(rclone_size, target, excludes, mirror_timeout(group["id"], label, target)): (label, target)
                 for label, target, excludes in group["items"]
             }
             for future in as_completed(futures):
@@ -664,6 +713,9 @@ def compute_mirror_checks():
                         info.update(fallback)
                         info["status"] = "stale"
                         info["error"] = "Live size check timed out; showing last audit value."
+                    elif "timed out" in info.get("error", "").lower():
+                        info["status"] = "timeout"
+                        info["error"] = "Live size count timed out. The sync service can still be healthy; this only means the dashboard could not finish enumerating this location."
                 info.update({"label": label, "target": target})
                 items.append(info)
         order = {label: index for index, (label, _target, _excludes) in enumerate(group["items"])}
@@ -675,14 +727,28 @@ def compute_mirror_checks():
             "status": compare_to_source(items),
             "items": items,
         })
-    set_cache("mirror_checks", groups, ttl=1800)
+    record = {
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+        "trigger_ts": trigger_ts,
+        "groups": groups,
+    }
+    save_mirror_cache(record)
 
 
-def get_mirror_checks():
-    data = cached("mirror_checks")
-    if data is not None:
-        return data
-    refresh_in_background("mirror_checks", compute_mirror_checks)
+def get_mirror_checks(status, audit):
+    trigger_ts = mirror_trigger_timestamp(status, audit)
+    record = load_mirror_cache()
+    if record.get("groups") and record.get("trigger_ts") == trigger_ts:
+        return record["groups"]
+
+    if record.get("groups"):
+        refresh_in_background("mirror_checks", lambda: compute_mirror_checks(trigger_ts))
+        groups = record["groups"]
+        for group in groups:
+            group["cache_state"] = "refreshing"
+        return groups
+
+    refresh_in_background("mirror_checks", lambda: compute_mirror_checks(trigger_ts))
     groups = build_mirror_placeholders()
     set_cache("mirror_checks_placeholder", groups, ttl=45)
     return groups
@@ -865,8 +931,9 @@ def get_overall_health(status, audit, mirrors, restic):
 def build_context():
     status = load_status()
     audit = get_audit_state()
-    mirrors = get_mirror_checks()
+    mirrors = get_mirror_checks(status, audit)
     restic = get_restic_info()
+    mirror_record = load_mirror_cache()
     return {
         "now": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
         "status": status,
@@ -874,6 +941,11 @@ def build_context():
         "health": get_overall_health(status, audit, mirrors, restic),
         "restic": restic,
         "mirrors": mirrors,
+        "mirror_meta": {
+            "checked_at": mirror_record.get("checked_at"),
+            "trigger_ts": mirror_record.get("trigger_ts"),
+            "current_trigger_ts": mirror_trigger_timestamp(status, audit),
+        },
         "audit": audit,
         "history": load_failure_history(),
         "recent_logs": get_recent_logs(status),
@@ -924,6 +996,10 @@ def api_trigger(unit_name):
 def clear_cache():
     with _cache_lock:
         _cache.clear()
+    try:
+        MIRROR_CACHE_FILE.unlink(missing_ok=True)
+    except Exception:
+        pass
     return jsonify({"status": "cache cleared"})
 
 

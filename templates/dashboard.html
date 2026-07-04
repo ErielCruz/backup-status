@@ -178,6 +178,17 @@
       <div>
         <div class="card-title">Mirror Parity</div>
         <div class="section-note">Raw rclone mirrors should match count and size inside each group.</div>
+        <div class="section-note">
+          Last full parity check:
+          {{ mirror_meta.checked_at | fmt_time_ago if mirror_meta.checked_at else "not recorded" }}.
+          {% if mirror_meta.checked_at and mirror_meta.trigger_ts == mirror_meta.current_trigger_ts %}
+            Reusing saved result; no newer sync/audit has completed.
+          {% elif mirror_meta.checked_at %}
+            Showing saved result while a newer check runs.
+          {% else %}
+            Waiting for the first full check.
+          {% endif %}
+        </div>
       </div>
     </div>
     {% for group in mirrors %}
@@ -204,8 +215,8 @@
               <th>Location</th>
               <th>Files</th>
               <th>Size</th>
-              <th>Delta Files</th>
-              <th>Delta Size</th>
+              <th>File Diff</th>
+              <th>Size Diff</th>
             </tr>
           </thead>
           <tbody>
@@ -217,7 +228,7 @@
               <td class="td-num">{{ item.count_delta if item.count_delta is defined else "-" }}</td>
               <td class="td-num">{{ item.bytes_delta | fmt_bytes if item.bytes_delta is defined else "-" }}</td>
             </tr>
-            {% if item.status == "error" %}
+            {% if item.status == "error" or item.status == "timeout" %}
             <tr>
               <td colspan="5" class="td-error">{{ item.error }}</td>
             </tr>

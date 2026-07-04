@@ -33,11 +33,13 @@ Restic repos are not compared by raw file size because restic is deduplicated an
 
 The first page render does not wait for every remote provider. It loads immediately from live systemd state and the last audit, then refreshes restic and rclone parity checks in the background. Slow providers show `LOADING`, `UNKNOWN`, or the provider error instead of blocking the dashboard.
 
+Mirror parity checks are persisted in `/state/mirror-checks-latest.json`. The web app reuses that saved result when no relevant sync or audit service has completed since the check. A full `rclone size` comparison only starts when the saved result is missing or a newer sync/audit run exists. This keeps page loads cheap and avoids re-counting remote files just because the dashboard was opened.
+
 Loading the site does not start `backup-audit.service`. The dashboard only reads `/state/audit-latest.json`; scheduled/chained backup services run the audit.
 
 Some services are chained instead of timer-driven. For those rows, `Next Run` shows the upstream trigger, for example `after secrets`, instead of a blank timer value. If systemd does not expose a timestamp for a completed oneshot service, the dashboard derives `Last Run` from the latest journal `Finished`/`Failed` line.
 
-Hetzner Pictures can be slow to list with `rclone size`. If the live size check times out, the dashboard falls back to the last audit value and marks that row as an audit-backed value instead of a confirmed live check.
+Hetzner Pictures can be slow to list with `rclone size`. The sync service can succeed while the dashboard's live count check times out, because counting has to enumerate the remote tree for display. Normal mirror checks use short timeouts, but Hetzner Live Pictures gets a longer 300-second window before it is marked unavailable. The audit's `Pictures` result is combined (`~/Pictures` plus SSD `Photos` and `Videos`), so it is not used as a fallback for the narrower Live Pictures row. A Live Pictures timeout is shown as an unavailable live check, not as a file mismatch.
 
 ## Deployment
 
@@ -53,7 +55,7 @@ Required mounts:
 - `/home/eriel/Samsung_750:/samsung:ro`
 - `/home/eriel/4TB:/4tb:ro`
 - `/home/eriel/Documents/home_server_ops/home_server_backup/logs:/logs:ro`
-- `/home/eriel/Documents/home_server_ops/home_server_backup/state:/state:ro`
+- `/home/eriel/Documents/home_server_ops/home_server_backup/state:/state`
 - `/home/eriel/.config/rclone:/root/.config/rclone:ro`
 - `/run/user/1000:/run/user/1000:ro`
 - `/var/log/journal:/var/log/journal:ro`
@@ -74,4 +76,4 @@ docker compose up -d --build
 | `GET /api/refresh` | HTMX dashboard refresh |
 | `GET /api/logs/<unit>` | Recent journal lines for an allowed backup/sync unit |
 | `POST /api/trigger/<unit>` | Start an allowed backup/sync unit |
-| `GET /api/clear-cache` | Clear in-memory dashboard cache |
+| `GET /api/clear-cache` | Clear in-memory dashboard cache and saved mirror parity cache |
