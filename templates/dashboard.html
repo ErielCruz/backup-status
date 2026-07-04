@@ -163,7 +163,7 @@
           </tr>
           <tr class="log-row" id="logs-{{ unit.name }}" style="display:none">
             <td colspan="6">
-              <pre class="log-output" id="log-content-{{ unit.name }}">Loading...</pre>
+              <div class="log-output" id="log-content-{{ unit.name }}">Loading...</div>
             </td>
           </tr>
           {% endfor %}
@@ -333,7 +333,15 @@
     {% for entry in recent_logs %}
     <div class="log-snippet">
       <div class="log-title">{{ entry.unit }}</div>
-      <pre class="log-output">{{ entry.lines | join('\n') }}</pre>
+      <div class="log-output">
+        {% for line in entry.entries %}
+        <div class="log-entry log-{{ line.level }}">
+          <span class="log-time">{{ line.time }}</span>
+          <span class="log-level">{{ line.level }}</span>
+          <span class="log-message">{{ line.message }}</span>
+        </div>
+        {% endfor %}
+      </div>
     </div>
     {% endfor %}
   </div>
@@ -377,7 +385,7 @@
           </tr>
           <tr class="log-row" id="logs-{{ job.name }}" style="display:none">
             <td colspan="5">
-              <pre class="log-output" id="log-content-{{ job.name }}">Loading...</pre>
+              <div class="log-output" id="log-content-{{ job.name }}">Loading...</div>
             </td>
           </tr>
           {% endfor %}
@@ -398,11 +406,45 @@ function toggleLogs(unitName) {
     fetch('/api/logs/' + unitName + '?lines=80')
       .then(function(response) { return response.json(); })
       .then(function(data) {
-        content.textContent = (data.lines || []).join('\n') || 'No logs found';
+        renderLogs(content, data.entries || [], data.lines || []);
       });
   } else {
     row.style.display = 'none';
   }
+}
+
+function renderLogs(container, entries, rawLines) {
+  container.innerHTML = '';
+  if (!entries.length && rawLines.length) {
+    entries = rawLines.map(function(line) {
+      return {time: '', level: 'info', message: line};
+    });
+  }
+  if (!entries.length) {
+    container.textContent = 'No logs found';
+    return;
+  }
+  entries.forEach(function(entry) {
+    var row = document.createElement('div');
+    row.className = 'log-entry log-' + (entry.level || 'info');
+
+    var time = document.createElement('span');
+    time.className = 'log-time';
+    time.textContent = entry.time || '-';
+
+    var level = document.createElement('span');
+    level.className = 'log-level';
+    level.textContent = entry.level || 'info';
+
+    var message = document.createElement('span');
+    message.className = 'log-message';
+    message.textContent = entry.message || '';
+
+    row.appendChild(time);
+    row.appendChild(level);
+    row.appendChild(message);
+    container.appendChild(row);
+  });
 }
 
 function triggerUnit(unitName) {

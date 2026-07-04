@@ -24,6 +24,8 @@ Restic repos are not compared by raw file size because restic is deduplicated an
 
 In `Last Audit Verification`, restic rows show snapshot evidence such as snapshot count and latest snapshot time. Raw mirror rows show local and remote file counts/sizes.
 
+Logs are parsed from journal lines into readable time, level, and message fields. The log API returns both raw `lines` and parsed `entries`.
+
 ## Data Sources
 
 - Live systemd user units through `/run/user/1000/bus`

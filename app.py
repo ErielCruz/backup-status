@@ -341,6 +341,41 @@ def parse_journal_timestamp(line):
         return None
 
 
+def format_log_time(iso):
+    dt = iso_to_utc(iso)
+    if not dt:
+        return "-"
+    return dt.strftime("%H:%M:%S")
+
+
+def parse_log_line(line):
+    entry = {"time": "", "level": "info", "message": line}
+    match = re.match(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:[+-]\d{2}:\d{2}|Z))\s+\S+\s+([^:]+):\s*(.*)$", line)
+    if match:
+        entry["time"] = format_log_time(match.group(1))
+        source = match.group(2).strip()
+        message = match.group(3).strip()
+        message = re.sub(r"^(Starting|Finished)\s+.+?\.service\s+-\s+", r"\1 ", message)
+        message = re.sub(r"^Starting\s+", "Started ", message)
+        message = re.sub(r"^Finished\s+", "Completed ", message)
+        message = re.sub(r"^(Started|Completed)\s+Collect\s+", r"\1 ", message)
+        entry["message"] = message
+        if "backup-status-collector" not in source:
+            entry["source"] = source
+    lowered = entry["message"].lower()
+    if any(word in lowered for word in ("failed", "failure", "error", "denied", "corrupt")):
+        entry["level"] = "error"
+    elif any(word in lowered for word in ("warn", "warning", "timeout", "timed out", "skipped")):
+        entry["level"] = "warn"
+    elif "finished " in lowered or "completed " in lowered or " ok" in lowered or "success" in lowered:
+        entry["level"] = "ok"
+    return entry
+
+
+def parse_log_lines(lines):
+    return [parse_log_line(line) for line in lines]
+
+
 def load_json_file(path, default):
     if path.is_file():
         try:
@@ -947,7 +982,7 @@ def get_recent_logs(status):
     for unit in priority[:5]:
         lines = unit.get("last_lines", [])[-6:]
         if lines:
-            important.append({"unit": unit["name"], "lines": lines})
+            important.append({"unit": unit["name"], "lines": lines, "entries": parse_log_lines(lines)})
     return important
 
 
@@ -1042,7 +1077,8 @@ def api_logs(unit_name):
         lines = max(1, min(int(request.args.get("lines", 50)), 200))
     except ValueError:
         lines = 50
-    return jsonify({"unit": unit_name, "lines": get_unit_logs(unit_name, lines)})
+    raw_lines = get_unit_logs(unit_name, lines)
+    return jsonify({"unit": unit_name, "lines": raw_lines, "entries": parse_log_lines(raw_lines)})
 
 
 @app.route("/api/trigger/<unit_name>", methods=["POST"])
