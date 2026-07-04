@@ -26,6 +26,28 @@ In `Last Audit Verification`, restic rows show snapshot evidence such as snapsho
 
 Logs are parsed from journal lines into readable time, level, and message fields. The log API returns both raw `lines` and parsed `entries`.
 
+## Healthchecks Role
+
+Healthchecks is deployed at <https://healthchecks.erielcruz.com> as the standard
+heartbeat monitor for scheduled jobs. It answers a simpler operational question:
+did each backup, sync, audit, or maintenance job check in on time and finish?
+
+The Backup Status dashboard should stay focused on backup-specific evidence that
+Healthchecks does not replace:
+
+- local drive capacity and remaining space
+- restic snapshot presence, counts, and latest snapshot times
+- raw mirror parity by file count and byte size
+- recent relevant logs from the backup and sync units
+- topology details such as which data is expected on SSD, 4TB, B2, and Hetzner
+
+Possible future simplification: after every important systemd job pings
+Healthchecks on start, success, and failure, this app can stop trying to be the
+primary schedule monitor. It can instead link to Healthchecks for heartbeat
+status and keep only the backup evidence checks that are unique to this setup.
+That would reduce custom code around timers, last/next run display, and generic
+service health while preserving the checks needed to prove backups are complete.
+
 ## Data Sources
 
 - Live systemd user units through `/run/user/1000/bus`
