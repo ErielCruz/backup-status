@@ -282,29 +282,34 @@
     </div>
   </div>
 
-  {% if audit.verify_results %}
+  {% if audit_verify_rows %}
   <div class="card">
     <div class="card-title">Last Audit Verification</div>
     <div class="table-wrap">
-      <table>
+      <table class="audit-table">
+        <colgroup>
+          <col class="audit-check">
+          <col class="audit-kind">
+          <col class="audit-evidence">
+          <col class="audit-evidence">
+          <col class="audit-status">
+        </colgroup>
         <thead>
           <tr>
             <th>Check</th>
-            <th>Local Files</th>
-            <th>Remote Files</th>
-            <th>Local Size</th>
-            <th>Remote Size</th>
+            <th>Type</th>
+            <th>Local Evidence</th>
+            <th>Remote Evidence</th>
             <th>Status</th>
           </tr>
         </thead>
         <tbody>
-          {% for v in audit.verify_results %}
+          {% for v in audit_verify_rows %}
           <tr>
             <td>{{ v.label }}</td>
-            <td class="td-num">{{ v.local_count if v.local_count is defined else "-" }}</td>
-            <td class="td-num">{{ v.remote_count if v.remote_count is defined else "-" }}</td>
-            <td class="td-num">{{ v.local_size | fmt_bytes if v.local_size is defined else "-" }}</td>
-            <td class="td-num">{{ v.remote_size | fmt_bytes if v.remote_size is defined else "-" }}</td>
+            <td>{{ v.kind }}</td>
+            <td>{{ v.local }}</td>
+            <td>{{ v.remote }}</td>
             <td>
               {% if v.status == "ok" %}
                 <span class="status status-pass">OK</span>

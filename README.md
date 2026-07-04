@@ -22,6 +22,8 @@ The app matches the current backup design:
 
 Restic repos are not compared by raw file size because restic is deduplicated and encrypted. The dashboard checks snapshot availability and latest snapshot time instead.
 
+In `Last Audit Verification`, restic rows show snapshot evidence such as snapshot count and latest snapshot time. Raw mirror rows show local and remote file counts/sizes.
+
 ## Data Sources
 
 - Live systemd user units through `/run/user/1000/bus`

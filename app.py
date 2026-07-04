@@ -593,6 +593,50 @@ def get_audit_state():
     return result
 
 
+def format_audit_verifications(audit):
+    rows = []
+    for item in audit.get("verify_results", []):
+        label = item.get("label", "")
+        row = {
+            "label": label,
+            "status": item.get("status", "unknown"),
+            "kind": "Raw mirror",
+            "local": "-",
+            "remote": "-",
+        }
+        if item.get("snapshot_count") is not None:
+            latest = item.get("latest_snapshot")
+            if not latest and label.startswith("B2:"):
+                latest = audit.get("b2_latest")
+            if not latest and label.startswith("Hetzner:"):
+                latest = audit.get("hetzner_latest")
+            remote = f"{item.get('snapshot_count')} snapshots"
+            if latest:
+                remote += f", latest {fmt_date_short(latest)}"
+            row.update({
+                "kind": "Restic repository",
+                "local": "encrypted snapshot source",
+                "remote": remote,
+            })
+        else:
+            local_count = item.get("local_count")
+            remote_count = item.get("remote_count")
+            local_size = item.get("local_size")
+            remote_size = item.get("remote_size")
+            row["local"] = (
+                f"{local_count} files, {fmt_bytes(local_size)}"
+                if local_count is not None and local_size is not None
+                else item.get("reason", "-")
+            )
+            row["remote"] = (
+                f"{remote_count} files, {fmt_bytes(remote_size)}"
+                if remote_count is not None and remote_size is not None
+                else item.get("reason", "-")
+            )
+        rows.append(row)
+    return rows
+
+
 def rclone_size(target, excludes=None, timeout=90):
     args = ["rclone", "size", "--json"]
     for pattern in excludes or []:
@@ -947,6 +991,7 @@ def build_context():
             "current_trigger_ts": mirror_trigger_timestamp(status, audit),
         },
         "audit": audit,
+        "audit_verify_rows": format_audit_verifications(audit),
         "history": load_failure_history(),
         "recent_logs": get_recent_logs(status),
     }

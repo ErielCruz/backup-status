@@ -285,6 +285,27 @@ table {
   width: 19%;
 }
 
+.audit-table {
+  min-width: 760px;
+  table-layout: fixed;
+}
+
+.audit-check {
+  width: 25%;
+}
+
+.audit-kind {
+  width: 18%;
+}
+
+.audit-evidence {
+  width: 24%;
+}
+
+.audit-status {
+  width: 9%;
+}
+
 th,
 td {
   text-align: left;
