@@ -24,7 +24,7 @@ Restic repos are not compared by raw file size because restic is deduplicated an
 
 In `Last Audit Verification`, restic rows show snapshot evidence such as snapshot count and latest snapshot time. Raw mirror rows show local and remote file counts/sizes.
 
-Logs are parsed into readable time, level, and message fields. The log API prefers the collector's latest-invocation `status.json` lines, falling back to journald only when collector lines are unavailable. Older journal history is intentionally left for manual investigation.
+Logs are parsed into readable time, level, and message fields. Severity labels only flag explicit failures, nonzero error/warning counts, warnings, and timeouts; expected audit notes such as skipped weekly deep verify windows stay informational. The log API prefers the collector's latest-invocation `status.json` lines, falling back to journald only when collector lines are unavailable. Older journal history is intentionally left for manual investigation.
 
 ## Healthchecks Role
 

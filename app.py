@@ -348,6 +348,31 @@ def format_log_time(iso):
     return dt.strftime("%H:%M:%S")
 
 
+def classify_log_level(message):
+    lowered = message.lower()
+
+    if re.search(r"\berrors?\s*:\s*0\b", lowered) or "no errors were found" in lowered:
+        return "ok"
+    if re.search(r"\bwarnings?\s*:\s*0\b", lowered):
+        return "ok"
+    if "audit result: passed" in lowered:
+        return "ok"
+
+    if re.search(r"\berrors?\s*:\s*[1-9]\d*\b", lowered):
+        return "error"
+    if re.search(r"\bwarnings?\s*:\s*[1-9]\d*\b", lowered):
+        return "warn"
+
+    if re.search(r"\b(failed|failure|error|denied|corrupt)\b", lowered):
+        return "error"
+    if re.search(r"\b(warn|warning|timeout)\b", lowered) or "timed out" in lowered:
+        return "warn"
+
+    if "finished " in lowered or "completed " in lowered or " ok" in lowered or "success" in lowered:
+        return "ok"
+    return "info"
+
+
 def parse_log_line(line):
     entry = {"time": "", "level": "info", "message": line}
     match = re.match(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:[+-]\d{2}:\d{2}|Z))\s+\S+\s+([^:]+):\s*(.*)$", line)
@@ -362,13 +387,7 @@ def parse_log_line(line):
         entry["message"] = message
         if "backup-status-collector" not in source:
             entry["source"] = source
-    lowered = entry["message"].lower()
-    if any(word in lowered for word in ("failed", "failure", "error", "denied", "corrupt")):
-        entry["level"] = "error"
-    elif any(word in lowered for word in ("warn", "warning", "timeout", "timed out", "skipped")):
-        entry["level"] = "warn"
-    elif "finished " in lowered or "completed " in lowered or " ok" in lowered or "success" in lowered:
-        entry["level"] = "ok"
+    entry["level"] = classify_log_level(entry["message"])
     return entry
 
 
