@@ -483,6 +483,10 @@ def is_future_iso(iso, grace_seconds=60):
 
 
 def get_unit_logs(name, lines=20):
+    collector_lines = get_collector_unit_logs(name)
+    if collector_lines:
+        return collector_lines[:lines]
+
     args = [
         "journalctl",
         f"_UID={USER_UID}",
@@ -494,7 +498,7 @@ def get_unit_logs(name, lines=20):
     ]
     out, ok = run_args(args, timeout=10, env_vars=SYSTEMD_ENV)
     if ok and out and "-- No entries --" not in out:
-        return sort_log_lines(out.splitlines())[:lines]
+        return latest_invocation_lines(sort_log_lines(out.splitlines()))[:lines]
 
     args = [
         "journalctl",
@@ -510,7 +514,28 @@ def get_unit_logs(name, lines=20):
     out, ok = run_args(args, timeout=10, env_vars=SYSTEMD_ENV)
     if not ok or not out or "-- No entries --" in out:
         return []
-    return sort_log_lines(out.splitlines())[:lines]
+    return latest_invocation_lines(sort_log_lines(out.splitlines()))[:lines]
+
+
+def latest_invocation_lines(lines):
+    latest = []
+    for line in lines:
+        latest.append(line)
+        if "Starting " in line:
+            break
+    return latest
+
+
+def get_collector_unit_logs(name):
+    status = load_json_file(STATUS_FILE, {})
+    for pipeline in (status.get("pipelines") or {}).values():
+        for unit in pipeline.get("units", []):
+            if unit.get("name") == name:
+                return unit.get("last_lines") or []
+    for unit in status.get("standalone", []):
+        if unit.get("name") == name:
+            return unit.get("last_lines") or []
+    return []
 
 
 def sort_log_lines(lines):

@@ -24,7 +24,7 @@ Restic repos are not compared by raw file size because restic is deduplicated an
 
 In `Last Audit Verification`, restic rows show snapshot evidence such as snapshot count and latest snapshot time. Raw mirror rows show local and remote file counts/sizes.
 
-Logs are parsed from journal lines into readable time, level, and message fields. The log API returns both raw `lines` and parsed `entries`.
+Logs are parsed into readable time, level, and message fields. The log API prefers the collector's latest-invocation `status.json` lines, falling back to journald only when collector lines are unavailable. Older journal history is intentionally left for manual investigation.
 
 ## Healthchecks Role
 
@@ -100,6 +100,6 @@ docker compose up -d --build
 | `GET /` | Dashboard page |
 | `GET /health` | Health check |
 | `GET /api/refresh` | HTMX dashboard refresh |
-| `GET /api/logs/<unit>` | Recent journal lines for an allowed backup/sync unit |
+| `GET /api/logs/<unit>` | Latest invocation journal lines for an allowed backup/sync unit |
 | `POST /api/trigger/<unit>` | Start an allowed backup/sync unit |
 | `GET /api/clear-cache` | Clear in-memory dashboard cache and saved mirror parity cache |
