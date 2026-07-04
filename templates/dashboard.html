@@ -209,14 +209,21 @@
         {% endif %}
       </div>
       <div class="table-wrap compact">
-        <table>
+        <table class="mirror-table">
+          <colgroup>
+            <col class="mirror-location">
+            <col class="mirror-files">
+            <col class="mirror-size">
+            <col class="mirror-diff-files">
+            <col class="mirror-diff-size">
+          </colgroup>
           <thead>
             <tr>
               <th>Location</th>
-              <th>Files</th>
-              <th>Size</th>
-              <th>File Diff</th>
-              <th>Size Diff</th>
+              <th class="td-num">Files</th>
+              <th class="td-num">Size</th>
+              <th class="td-num">File Diff</th>
+              <th class="td-num">Size Diff</th>
             </tr>
           </thead>
           <tbody>

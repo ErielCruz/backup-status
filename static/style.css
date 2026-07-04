@@ -266,6 +266,25 @@ table {
   border-collapse: collapse;
 }
 
+.mirror-table {
+  min-width: 620px;
+  table-layout: fixed;
+}
+
+.mirror-location {
+  width: 28%;
+}
+
+.mirror-files,
+.mirror-diff-files {
+  width: 17%;
+}
+
+.mirror-size,
+.mirror-diff-size {
+  width: 19%;
+}
+
 th,
 td {
   text-align: left;
