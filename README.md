@@ -57,7 +57,7 @@ service health while preserving the checks needed to prove backups are complete.
 - Rclone `size --json` for raw mirror count and size checks
 - `df -h` for Samsung SSD, 4TB, and Pictures source capacity
 
-The first page render does not wait for every remote provider. It loads immediately from live systemd state and the last audit, then refreshes restic and rclone parity checks in the background. Slow providers show `LOADING`, `UNKNOWN`, or the provider error instead of blocking the dashboard. The dashboard does not automatically swap the whole page on a timer, so opened unit log drawers stay open until the user closes them or reloads the page.
+The first page render does not wait for every remote provider. It loads immediately from live systemd state and the last audit, then refreshes restic and rclone parity checks in the background. Slow providers show `LOADING`, `UNKNOWN`, or the provider error instead of blocking the dashboard. The dashboard does not automatically swap the whole page on a timer, so opened unit log drawers stay open until the user closes them or reloads the page. While slow checks are still loading, only the Mirror Parity and Restic Snapshots cards poll their own partial endpoints and replace themselves when new data is ready.
 
 Mirror parity checks are persisted in `/state/mirror-checks-latest.json`. The web app reuses that saved result when no relevant sync or audit service has completed since the check. A full `rclone size` comparison only starts when the saved result is missing or a newer sync/audit run exists. This keeps page loads cheap and avoids re-counting remote files just because the dashboard was opened.
 
@@ -100,6 +100,8 @@ docker compose up -d --build
 | `GET /` | Dashboard page |
 | `GET /health` | Health check |
 | `GET /api/refresh` | HTMX dashboard refresh |
+| `GET /api/mirrors` | Mirror Parity card refresh while slow size checks are loading |
+| `GET /api/restic` | Restic Snapshots card refresh while snapshot checks are loading |
 | `GET /api/logs/<unit>` | Latest invocation journal lines for an allowed backup/sync unit |
 | `POST /api/trigger/<unit>` | Start an allowed backup/sync unit |
 | `GET /api/clear-cache` | Clear in-memory dashboard cache and saved mirror parity cache |

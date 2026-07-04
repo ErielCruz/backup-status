@@ -1,0 +1,29 @@
+<div id="restic-snapshots" class="card"{% if restic_refreshing %} hx-get="/api/restic" hx-trigger="every 15s" hx-swap="outerHTML"{% endif %}>
+  <div class="card-title">Restic Snapshots</div>
+  <div class="restic-grid">
+    {% for repo in restic %}
+    <div class="restic-card{% if repo.status != 'ok' %} restic-error{% endif %}">
+      <div class="restic-card-label">{{ repo.label }}</div>
+      {% if repo.status == "ok" or repo.status == "loading" %}
+        <div class="restic-card-count">{{ repo.count }} snapshot{{ 's' if repo.count != 1 }}</div>
+        <div class="restic-card-latest">Latest: {{ repo.latest | fmt_date_short if repo.latest else "-" }}</div>
+        {% if repo.status == "loading" %}
+        <div class="status status-warn">REFRESHING</div>
+        {% endif %}
+        {% if repo.snapshots %}
+        <div class="restic-snapshots">
+          {% for snap in repo.snapshots %}
+          <div class="restic-snap">
+            <span>{{ snap.time | fmt_date_short }}</span>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+      {% else %}
+        <div class="status status-warn">CHECK FAILED</div>
+        <div class="restic-card-latest">{{ repo.error }}</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>

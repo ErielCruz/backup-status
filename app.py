@@ -1063,24 +1063,55 @@ def get_overall_health(status, audit, mirrors, restic):
     return {"status": health, "issues": issues, "warnings": warnings}
 
 
-def build_context():
-    status = load_status()
-    audit = get_audit_state()
+def is_mirror_refreshing(mirrors):
+    for group in mirrors:
+        if group.get("status") == "loading" or group.get("cache_state") == "refreshing":
+            return True
+        if any(item.get("status") == "loading" for item in group.get("items", [])):
+            return True
+    return False
+
+
+def is_restic_refreshing(restic):
+    return any(repo.get("status") == "loading" for repo in restic)
+
+
+def build_mirror_context(status=None, audit=None):
+    status = status or load_status()
+    audit = audit or get_audit_state()
     mirrors = get_mirror_checks(status, audit)
-    restic = get_restic_info()
     mirror_record = load_mirror_cache()
     return {
-        "now": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
-        "status": status,
-        "disk": get_disk(),
-        "health": get_overall_health(status, audit, mirrors, restic),
-        "restic": restic,
         "mirrors": mirrors,
+        "mirror_refreshing": is_mirror_refreshing(mirrors),
         "mirror_meta": {
             "checked_at": mirror_record.get("checked_at"),
             "trigger_ts": mirror_record.get("trigger_ts"),
             "current_trigger_ts": mirror_trigger_timestamp(status, audit),
         },
+    }
+
+
+def build_restic_context():
+    restic = get_restic_info()
+    return {
+        "restic": restic,
+        "restic_refreshing": is_restic_refreshing(restic),
+    }
+
+
+def build_context():
+    status = load_status()
+    audit = get_audit_state()
+    mirror_context = build_mirror_context(status, audit)
+    restic_context = build_restic_context()
+    return {
+        "now": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
+        "status": status,
+        "disk": get_disk(),
+        "health": get_overall_health(status, audit, mirror_context["mirrors"], restic_context["restic"]),
+        **mirror_context,
+        **restic_context,
         "audit": audit,
         "audit_verify_rows": format_audit_verifications(audit),
         "history": load_failure_history(),
@@ -1100,6 +1131,16 @@ def health():
 @app.route("/api/refresh")
 def api_refresh():
     return render_template("dashboard.html", **build_context())
+
+
+@app.route("/api/mirrors")
+def api_mirrors():
+    return render_template("_mirror_parity.html", **build_mirror_context())
+
+
+@app.route("/api/restic")
+def api_restic():
+    return render_template("_restic_snapshots.html", **build_restic_context())
 
 
 @app.route("/api/logs/<unit_name>")
