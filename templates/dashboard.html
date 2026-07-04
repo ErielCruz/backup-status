@@ -1,222 +1,21 @@
 <div class="container" hx-get="/api/refresh" hx-trigger="every 60s" hx-swap="outerHTML">
   <div class="header">
     <span class="dot{% if health.status == "fail" %} dot-fail{% elif health.status == "warn" %} dot-warn{% endif %}"></span>
-    <h1>Backup Dashboard</h1>
+    <h1>Backup Status</h1>
     <span class="badge">{{ now }}</span>
   </div>
 
-  {% if health.status == "fail" %}
-  <div class="status-banner status-banner-fail">
-    <span class="status status-fail">FAIL</span>
-    <span class="status-banner-text">
-      {% if health.pipeline_failures %}Pipeline{{ 's' if health.pipeline_failures|length > 1 }} failed: {{ health.pipeline_failures | join(', ') }}.{% endif %}
-      {% if health.audit_errors > 0 %} {{ health.audit_errors }} audit error{{ 's' if health.audit_errors != 1 }}.{% endif %}
-    </span>
-  </div>
-  {% elif health.status == "warn" %}
-  <div class="status-banner status-banner-warn">
-    <span class="status status-warn">WARN</span>
-    <span class="status-banner-text">{{ health.audit_warnings }} issue{{ 's' if health.audit_warnings != 1 }} need{{ 's' if health.audit_warnings == 1 else '' }} attention.</span>
-  </div>
-  {% endif %}
-
-  {% for pid, pipeline in status.pipelines.items() %}
-  <div class="card{% if pipeline.last_result != 'success' %} card-fail{% endif %}">
-    <div class="card-title">
-      {{ pipeline.label }}
-      <span class="card-badge">{{ pipeline.description }}</span>
-    </div>
-
-    <div class="pipeline-header">
-      <div class="pipeline-stat">
-        <span class="pipeline-stat-label">Last Run</span>
-        <span class="pipeline-stat-value">
-          {% if pipeline.last_run %}
-            {{ pipeline.last_run | fmt_time_ago }}
-            <span class="text-muted">({{ pipeline.last_run | fmt_date_short }})</span>
-          {% else %}
-            <span class="text-muted">never</span>
-          {% endif %}
-        </span>
-      </div>
-      <div class="pipeline-stat">
-        <span class="pipeline-stat-label">Next</span>
-        <span class="pipeline-stat-value">
-          {% if pipeline.next_run %}
-            {{ pipeline.next_run | fmt_time_ago }}
-          {% else %}
-            <span class="text-muted">\u2014</span>
-          {% endif %}
-        </span>
-      </div>
-      <div class="pipeline-stat">
-        <span class="pipeline-stat-label">Result</span>
-        <span class="pipeline-stat-value">
-          {% if pipeline.last_result == "success" %}
-            <span class="status status-pass">OK</span>
-          {% elif pipeline.last_result == "failure" or pipeline.last_result == "failed" %}
-            <span class="status status-fail">FAILED</span>
-          {% else %}
-            <span class="status status-unknown">{{ pipeline.last_result }}</span>
-          {% endif %}
-        </span>
-      </div>
-    </div>
-
-    {% set sizes = remotes.get(pid, {}) %}
-    <div class="remote-grid">
-      {% for dest_key, dest_label in [("local", "Local"), ("mirror", "Mirror"), ("b2", "B2"), ("hetzner", "Hetzner")] %}
-        {% if dest_key in sizes %}
-        <div class="remote-cell">
-          <div class="remote-cell-label">{{ dest_label }}</div>
-          <div class="remote-cell-size">{{ sizes[dest_key].get("bytes", 0) | fmt_bytes }}</div>
-          {% if sizes[dest_key].get("count") %}
-          <div class="remote-cell-count">{{ sizes[dest_key]["count"] }} files</div>
-          {% endif %}
-        </div>
-        {% endif %}
-      {% endfor %}
-      {% if "source" in sizes %}
-      <div class="remote-cell">
-        <div class="remote-cell-label">Source</div>
-        <div class="remote-cell-size">{{ sizes["source"].get("bytes", 0) | fmt_bytes }}</div>
-      </div>
-      {% endif %}
-    </div>
-  </div>
-  {% endfor %}
-
-  {% if audit.verify_results %}
-  <div class="card">
-    <div class="card-title">Remote Verification
-      {% if audit.last_audit %}
-      <span class="card-badge">Audit {{ audit.last_audit[11:16] }}</span>
-      {% endif %}
-    </div>
-    <table>
-      <thead>
-        <tr>
-          <th>Destination</th>
-          <th>Local Files</th>
-          <th>Remote Files</th>
-          <th>Local Size</th>
-          <th>Remote Size</th>
-          <th>Status</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for v in audit.verify_results %}
-        <tr>
-          <td>{{ v.label }}</td>
-          <td class="td-num">{{ v.local_count if v.local_count is defined else "\u2014" }}</td>
-          <td class="td-num">{{ v.remote_count if v.remote_count is defined else "\u2014" }}</td>
-          <td class="td-num">{{ v.local_size | fmt_bytes if v.local_size is defined else "\u2014" }}</td>
-          <td class="td-num">{{ v.remote_size | fmt_bytes if v.remote_size is defined else "\u2014" }}</td>
-          <td>
-            {% if v.status == "ok" %}
-            <span class="status status-pass">MATCH</span>
-            {% elif v.status == "mismatch" %}
-            <span class="status status-fail">MISMATCH</span>
-            {% elif v.status == "skip" %}
-            <span class="status status-warn">SKIP</span>
-            {% else %}
-            <span class="status status-unknown">{{ v.status }}</span>
-            {% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    {% if audit.snapshots %}
-    <div class="audit-section">
-      <div class="audit-section-title">Restic Snapshots</div>
-      <div class="grid-3" style="margin-top:8px">
-        <div class="stat-box">
-          <div class="stat-label">B2</div>
-          <div class="stat-value">{{ audit.snapshots.b2 if audit.snapshots.b2 is not none else "\u2014" }}</div>
-          <div class="stat-sub">{% if audit.b2_latest %}Latest: {{ audit.b2_latest[5:16] }}{% else %}\u2014{% endif %}</div>
-        </div>
-        <div class="stat-box">
-          <div class="stat-label">Hetzner</div>
-          <div class="stat-value">{{ audit.snapshots.hetzner if audit.snapshots.hetzner is not none else "\u2014" }}</div>
-          <div class="stat-sub">{% if audit.hetzner_latest %}Latest: {{ audit.hetzner_latest[5:16] }}{% else %}\u2014{% endif %}</div>
-        </div>
-        <div class="stat-box">
-          <div class="stat-label">Secrets</div>
-          <div class="stat-value">{{ audit.snapshots.secrets if audit.snapshots.secrets is not none else "\u2014" }}</div>
-        </div>
-      </div>
-    </div>
-    {% endif %}
-  </div>
-  {% endif %}
-
-  {% if audit.error_list or audit.warning_list %}
-  <div class="card{% if audit.errors > 0 %} card-fail{% elif audit.warnings > 0 %} card-warn{% endif %}">
-    <div class="card-title">Audit Issues</div>
-    {% if audit.error_list %}
-    <div class="audit-section" style="border-top:none;margin-top:0;padding-top:0">
-      <div class="audit-section-title">Errors ({{ audit.error_list|length }})</div>
-      <ul class="audit-list">
-        {% for item in audit.error_list %}
-        <li><span class="status status-fail">ERROR</span> {{ item }}</li>
-        {% endfor %}
-      </ul>
-    </div>
-    {% endif %}
-    {% if audit.warning_list %}
-    <div class="audit-section{% if not audit.error_list %}" style="border-top:none;margin-top:0;padding-top:0"{% endif %}>
-      <div class="audit-section-title">Warnings ({{ audit.warning_list|length }})</div>
-      <ul class="audit-list">
-        {% for item in audit.warning_list %}
-        <li><span class="status status-warn">WARN</span> {{ item }}</li>
-        {% endfor %}
-      </ul>
-    </div>
-    {% endif %}
-  </div>
-  {% endif %}
-
-  {% if status.standalone %}
-  <div class="card">
-    <div class="card-title">Maintenance Jobs</div>
-    <table>
-      <thead>
-        <tr>
-          <th>Job</th>
-          <th>Last Run</th>
-          <th>Result</th>
-          <th>Next</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for j in status.standalone %}
-        <tr>
-          <td>{{ j.name }}</td>
-          <td class="td-time">{{ j.last_run | fmt_date_short if j.last_run else "\u2014" }}</td>
-          <td>
-            {% if j.last_result == "success" %}
-            <span class="status status-pass">OK</span>
-            {% elif j.last_result == "failure" or j.last_result == "failed" %}
-            <span class="status status-fail">FAIL</span>
-            {% else %}
-            <span class="status status-unknown">{{ j.last_result }}</span>
-            {% endif %}
-          </td>
-          <td class="td-time">{{ j.next_run | fmt_date_short if j.next_run else "\u2014" }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  {% endif %}
-
-  <div class="grid-2">
+  <div class="drive-strip">
     {% for d in disk %}
-    <div class="card">
-      <div class="card-title">{{ d.label }}</div>
-      <div class="stat-value">{{ d.use_pct }}</div>
-      <div class="stat-sub">{{ d.used }} / {{ d.size }} used</div>
+    <div class="drive-card">
+      <div>
+        <div class="drive-label">{{ d.label }}</div>
+        <div class="drive-mount">{{ d.mount }}</div>
+      </div>
+      <div class="drive-numbers">
+        <strong>{{ d.avail }}</strong>
+        <span>free of {{ d.size }}</span>
+      </div>
       <div class="usage-bar">
         {% set pct = d.use_pct.rstrip("%") | int %}
         <div class="usage-fill{% if pct > 80 %} crit{% elif pct > 60 %} warn{% endif %}" style="width: {{ pct }}%"></div>
@@ -224,4 +23,355 @@
     </div>
     {% endfor %}
   </div>
+
+  <div class="status-banner status-banner-{{ health.status }}">
+    <span class="status status-{% if health.status == 'ok' %}pass{% else %}{{ health.status }}{% endif %}">
+      {% if health.status == "ok" %}OK{% elif health.status == "warn" %}WARN{% else %}FAIL{% endif %}
+    </span>
+    <span class="status-banner-text">
+      {% if health.status == "ok" %}
+        Backup jobs, audits, restic snapshots, and mirror parity look good.
+      {% elif health.issues %}
+        {{ health.issues[0] }}
+      {% elif health.warnings %}
+        {{ health.warnings[0] }}
+      {% endif %}
+    </span>
+  </div>
+
+  {% if health.issues or health.warnings %}
+  <div class="card{% if health.issues %} card-fail{% else %} card-warn{% endif %}">
+    <div class="card-title">What Needs Attention</div>
+    <ul class="issue-list">
+      {% for item in health.issues %}
+      <li><span class="status status-fail">FAIL</span>{{ item }}</li>
+      {% endfor %}
+      {% for item in health.warnings %}
+      <li><span class="status status-warn">WARN</span>{{ item }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  <div class="grid-3 top-stats">
+    <div class="stat-box">
+      <div class="stat-label">Audit</div>
+      <div class="stat-value">{% if audit.errors == 0 %}0 errors{% else %}{{ audit.errors }} errors{% endif %}</div>
+      <div class="stat-sub">{% if audit.audit_time %}{{ audit.audit_time | fmt_date_short }}{% else %}No audit file{% endif %}</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">System Snapshots</div>
+      <div class="stat-value">{{ audit.snapshots.b2 if audit.snapshots.b2 is defined else "-" }} B2</div>
+      <div class="stat-sub">{{ audit.snapshots.hetzner if audit.snapshots.hetzner is defined else "-" }} Hetzner</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-label">Next Backup</div>
+      {% set backup_next = status.pipelines.backups.next_run if status.pipelines.backups is defined else none %}
+      <div class="stat-value stat-sm">{{ backup_next | fmt_time_ago if backup_next else "-" }}</div>
+      <div class="stat-sub">{{ backup_next | fmt_date_short if backup_next else "Timer unavailable" }}</div>
+    </div>
+  </div>
+
+  {% for pid, pipeline in status.pipelines.items() %}
+  <div class="card{% if pipeline.last_result in ['failure', 'failed'] %} card-fail{% elif pipeline.last_result == 'running' %} card-warn{% endif %}">
+    <div class="section-header">
+      <div>
+        <div class="card-title">{{ pipeline.label }}</div>
+        <div class="section-note">{{ pipeline.description }}</div>
+      </div>
+      <div class="section-status">
+        {% if pipeline.last_result == "success" %}
+          <span class="status status-pass">OK</span>
+        {% elif pipeline.last_result == "running" %}
+          <span class="status status-warn">RUNNING</span>
+        {% elif pipeline.last_result in ["failure", "failed"] %}
+          <span class="status status-fail">FAILED</span>
+        {% else %}
+          <span class="status status-unknown">{{ pipeline.last_result }}</span>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="pipeline-header">
+      <div class="pipeline-stat">
+        <span class="pipeline-stat-label">Last Run</span>
+        <span class="pipeline-stat-value">{{ pipeline.last_run | fmt_time_ago if pipeline.last_run else "never" }}</span>
+        <span class="stat-sub">{{ pipeline.last_run | fmt_date_short if pipeline.last_run else "-" }}</span>
+      </div>
+      <div class="pipeline-stat">
+        <span class="pipeline-stat-label">Next Run</span>
+        <span class="pipeline-stat-value">{{ pipeline.next_run | fmt_time_ago if pipeline.next_run else "-" }}</span>
+        <span class="stat-sub">{{ pipeline.next_run | fmt_date_short if pipeline.next_run else "-" }}</span>
+      </div>
+      <div class="pipeline-stat">
+        <span class="pipeline-stat-label">Source</span>
+        <span class="pipeline-stat-value">{{ pipeline.units[0].source if pipeline.units else "unknown" }}</span>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Unit</th>
+            <th>Status</th>
+            <th>Last Run</th>
+            <th>Next Run</th>
+            <th>State</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for unit in pipeline.units %}
+          <tr class="{% if unit.last_result in ['failure', 'failed'] %}unit-row-fail{% elif unit.last_result == 'running' %}unit-row-warn{% endif %}">
+            <td class="unit-name">{{ unit.name }}</td>
+            <td>
+              {% if unit.last_result == "success" %}
+                <span class="status status-pass">OK</span>
+              {% elif unit.last_result == "running" %}
+                <span class="status status-warn">RUNNING</span>
+              {% elif unit.last_result in ["failure", "failed"] %}
+                <span class="status status-fail">FAIL</span>
+                {% if unit.exit_code %}<span class="text-muted">exit {{ unit.exit_code }}</span>{% endif %}
+              {% else %}
+                <span class="status status-unknown">{{ unit.last_result }}</span>
+              {% endif %}
+            </td>
+            <td class="td-time">{{ unit.last_run | fmt_time_ago if unit.last_run else "-" }}</td>
+            <td class="td-time">{{ unit.next_run | fmt_time_ago if unit.next_run else "-" }}</td>
+            <td class="td-time">{{ unit.active_state }}/{{ unit.sub_state }}</td>
+            <td class="unit-actions">
+              <button class="btn-log" onclick="toggleLogs('{{ unit.name }}')" title="Show logs">Log</button>
+              <button class="btn-trigger" onclick="triggerUnit('{{ unit.name }}')" title="Run now">Run</button>
+            </td>
+          </tr>
+          <tr class="log-row" id="logs-{{ unit.name }}" style="display:none">
+            <td colspan="6">
+              <pre class="log-output" id="log-content-{{ unit.name }}">Loading...</pre>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endfor %}
+
+  <div class="card">
+    <div class="section-header">
+      <div>
+        <div class="card-title">Mirror Parity</div>
+        <div class="section-note">Raw rclone mirrors should match count and size inside each group.</div>
+      </div>
+    </div>
+    {% for group in mirrors %}
+    <div class="mirror-group{% if group.status == 'mismatch' %} mirror-bad{% elif group.status == 'unknown' %} mirror-warn{% endif %}">
+      <div class="mirror-head">
+        <div>
+          <strong>{{ group.label }}</strong>
+          <span>{{ group.note }}</span>
+        </div>
+        {% if group.status == "ok" %}
+          <span class="status status-pass">MATCH</span>
+        {% elif group.status == "mismatch" %}
+          <span class="status status-fail">MISMATCH</span>
+        {% elif group.status == "loading" %}
+          <span class="status status-warn">LOADING</span>
+        {% else %}
+          <span class="status status-warn">UNKNOWN</span>
+        {% endif %}
+      </div>
+      <div class="table-wrap compact">
+        <table>
+          <thead>
+            <tr>
+              <th>Location</th>
+              <th>Files</th>
+              <th>Size</th>
+              <th>Delta Files</th>
+              <th>Delta Size</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in group["items"] %}
+            <tr>
+              <td>{{ item.label }}</td>
+              <td class="td-num">{{ item.count if item.count is not none else "-" }}</td>
+              <td class="td-num">{{ item.bytes | fmt_bytes if item.bytes is not none else "-" }}</td>
+              <td class="td-num">{{ item.count_delta if item.count_delta is defined else "-" }}</td>
+              <td class="td-num">{{ item.bytes_delta | fmt_bytes if item.bytes_delta is defined else "-" }}</td>
+            </tr>
+            {% if item.status == "error" %}
+            <tr>
+              <td colspan="5" class="td-error">{{ item.error }}</td>
+            </tr>
+            {% endif %}
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="card">
+    <div class="card-title">Restic Snapshots</div>
+    <div class="restic-grid">
+      {% for repo in restic %}
+      <div class="restic-card{% if repo.status != 'ok' %} restic-error{% endif %}">
+        <div class="restic-card-label">{{ repo.label }}</div>
+        {% if repo.status == "ok" or repo.status == "loading" %}
+          <div class="restic-card-count">{{ repo.count }} snapshot{{ 's' if repo.count != 1 }}</div>
+          <div class="restic-card-latest">Latest: {{ repo.latest | fmt_date_short if repo.latest else "-" }}</div>
+          {% if repo.status == "loading" %}
+          <div class="status status-warn">REFRESHING</div>
+          {% endif %}
+          {% if repo.snapshots %}
+          <div class="restic-snapshots">
+            {% for snap in repo.snapshots %}
+            <div class="restic-snap">
+              <span>{{ snap.time | fmt_date_short }}</span>
+            </div>
+            {% endfor %}
+          </div>
+          {% endif %}
+        {% else %}
+          <div class="status status-warn">CHECK FAILED</div>
+          <div class="restic-card-latest">{{ repo.error }}</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  {% if audit.verify_results %}
+  <div class="card">
+    <div class="card-title">Last Audit Verification</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Check</th>
+            <th>Local Files</th>
+            <th>Remote Files</th>
+            <th>Local Size</th>
+            <th>Remote Size</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for v in audit.verify_results %}
+          <tr>
+            <td>{{ v.label }}</td>
+            <td class="td-num">{{ v.local_count if v.local_count is defined else "-" }}</td>
+            <td class="td-num">{{ v.remote_count if v.remote_count is defined else "-" }}</td>
+            <td class="td-num">{{ v.local_size | fmt_bytes if v.local_size is defined else "-" }}</td>
+            <td class="td-num">{{ v.remote_size | fmt_bytes if v.remote_size is defined else "-" }}</td>
+            <td>
+              {% if v.status == "ok" %}
+                <span class="status status-pass">OK</span>
+              {% elif v.status == "mismatch" %}
+                <span class="status status-fail">MISMATCH</span>
+              {% else %}
+                <span class="status status-warn">{{ v.status }}</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if recent_logs %}
+  <div class="card">
+    <div class="card-title">Latest Relevant Logs</div>
+    {% for entry in recent_logs %}
+    <div class="log-snippet">
+      <div class="log-title">{{ entry.unit }}</div>
+      <pre class="log-output">{{ entry.lines | join('\n') }}</pre>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if status.standalone %}
+  <div class="card">
+    <div class="card-title">Maintenance Jobs</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Job</th>
+            <th>Last Run</th>
+            <th>Result</th>
+            <th>Next Run</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for job in status.standalone %}
+          <tr>
+            <td class="unit-name">{{ job.name }}</td>
+            <td class="td-time">{{ job.last_run | fmt_time_ago if job.last_run else "-" }}</td>
+            <td>
+              {% if job.last_result == "success" %}
+                <span class="status status-pass">OK</span>
+              {% elif job.last_result == "running" %}
+                <span class="status status-warn">RUNNING</span>
+              {% elif job.last_result in ["failure", "failed"] %}
+                <span class="status status-fail">FAIL</span>
+              {% else %}
+                <span class="status status-unknown">{{ job.last_result }}</span>
+              {% endif %}
+            </td>
+            <td class="td-time">{{ job.next_run | fmt_time_ago if job.next_run else "-" }}</td>
+            <td class="unit-actions">
+              <button class="btn-log" onclick="toggleLogs('{{ job.name }}')" title="Show logs">Log</button>
+              <button class="btn-trigger" onclick="triggerUnit('{{ job.name }}')" title="Run now">Run</button>
+            </td>
+          </tr>
+          <tr class="log-row" id="logs-{{ job.name }}" style="display:none">
+            <td colspan="5">
+              <pre class="log-output" id="log-content-{{ job.name }}">Loading...</pre>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
 </div>
+
+<script>
+function toggleLogs(unitName) {
+  var row = document.getElementById('logs-' + unitName);
+  if (!row) return;
+  if (row.style.display === 'none') {
+    row.style.display = '';
+    var content = document.getElementById('log-content-' + unitName);
+    fetch('/api/logs/' + unitName + '?lines=80')
+      .then(function(response) { return response.json(); })
+      .then(function(data) {
+        content.textContent = (data.lines || []).join('\n') || 'No logs found';
+      });
+  } else {
+    row.style.display = 'none';
+  }
+}
+
+function triggerUnit(unitName) {
+  if (!confirm('Run ' + unitName + ' now?')) return;
+  fetch('/api/trigger/' + unitName, {method: 'POST'})
+    .then(function(response) { return response.json(); })
+    .then(function(data) {
+      if (data.status === 'started') {
+        alert(unitName + ' started');
+      } else {
+        alert('Error: ' + (data.error || 'unknown'));
+      }
+    });
+}
+</script>

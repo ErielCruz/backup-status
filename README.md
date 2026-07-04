@@ -1,26 +1,62 @@
 # Backup Status Dashboard
 
-Web dashboard at https://backup.erielcruz.com showing backup and sync job health.
+Web dashboard at <https://backup.erielcruz.com> for the home server backup system.
 
-## What it shows
+## What It Answers
 
-- **Health bar** — at-a-glance summary: job failures, backup runs count, total data stored, verification pass rate
-- **Jobs table** — 11 backup/sync jobs with status (pass/fail), last run, next scheduled run
-- **Disk usage** — Samsung SSD and 4TB drive capacity with color-coded usage bars (blue <60%, amber 60-80%, red >80%)
-- **Run inventory** — all backup runs on disk with file count, total size, duration, and verification status (pass/fail/unknown)
-- **Verification history** — runs that have verify.log showing checksum and decrypt smoke test results
+- Are backup and sync runs healthy right now?
+- Which unit last ran, when did it run, and when is it scheduled next?
+- What are the latest useful logs when something is failing or running?
+- Do raw mirrors match by file count and byte size?
+- Do restic snapshot repos have recent snapshots?
+- How full are the local source drives?
 
-## How it works
+## Current Backup Model
 
-The Flask + HTMX app scans the backup root filesystem (`/samsung/Backup_SSD/HomeServerBackups/runs/`) for backup runs, reads `backup-report.json` and `verify.log` files, and computes aggregated stats. Job status comes from a JSON file written by a systemd collector. HTMX polls every 60 seconds for live updates.
+The app matches the current backup design:
 
-Results are cached in-memory with configurable TTL to avoid excessive filesystem reads.
+- System/container backups are encrypted restic snapshots in SSD, 4TB, B2, and Hetzner repos.
+- Secrets are encrypted restic snapshots in SSD, 4TB, B2, and Hetzner repos.
+- Raw mirrors compare local source data against SSD, 4TB, B2, and Hetzner where applicable.
+- `Long_Term_Backup` is the exception: source is 4TB and backup is Hetzner only.
 
-## Running locally
+Restic repos are not compared by raw file size because restic is deduplicated and encrypted. The dashboard checks snapshot availability and latest snapshot time instead.
+
+## Data Sources
+
+- Live systemd user units through `/run/user/1000/bus`
+- Journal logs for the backup/sync services
+- Audit state from `/state/audit-latest.json`
+- Restic snapshot metadata from the active repos
+- Rclone `size --json` for raw mirror count and size checks
+- `df -h` for Samsung SSD, 4TB, and Pictures source capacity
+
+The first page render does not wait for every remote provider. It loads immediately from live systemd state and the last audit, then refreshes restic and rclone parity checks in the background. Slow providers show `LOADING`, `UNKNOWN`, or the provider error instead of blocking the dashboard.
+
+## Deployment
+
+The running container is defined outside this repo:
 
 ```bash
-cd /home/eriel/Documents/repos/backup-status
-docker compose -f /home/eriel/Documents/backup_docker/stacks/backup-status/compose.yaml up -d --build
+/home/eriel/Documents/backup_docker/stacks/backup-status/compose.yaml
+```
+
+Required mounts:
+
+- `/home/eriel/Pictures:/pictures:ro`
+- `/home/eriel/Samsung_750:/samsung:ro`
+- `/home/eriel/4TB:/4tb:ro`
+- `/home/eriel/Documents/home_server_ops/home_server_backup/logs:/logs:ro`
+- `/home/eriel/Documents/home_server_ops/home_server_backup/state:/state:ro`
+- `/home/eriel/.config/rclone:/root/.config/rclone:ro`
+- `/run/user/1000:/run/user/1000:ro`
+- `/var/log/journal:/var/log/journal:ro`
+
+Rebuild and restart:
+
+```bash
+cd /home/eriel/Documents/backup_docker/stacks/backup-status
+docker compose up -d --build
 ```
 
 ## API
@@ -28,6 +64,8 @@ docker compose -f /home/eriel/Documents/backup_docker/stacks/backup-status/compo
 | Endpoint | Purpose |
 |---|---|
 | `GET /` | Dashboard page |
-| `GET /health` | Health check `{"status":"ok"}` |
-| `GET /api/refresh` | HTMX partial update (auto-polled every 60s) |
-| `GET /api/clear-cache` | Clear in-memory cache |
+| `GET /health` | Health check |
+| `GET /api/refresh` | HTMX dashboard refresh |
+| `GET /api/logs/<unit>` | Recent journal lines for an allowed backup/sync unit |
+| `POST /api/trigger/<unit>` | Start an allowed backup/sync unit |
+| `GET /api/clear-cache` | Clear in-memory dashboard cache |
