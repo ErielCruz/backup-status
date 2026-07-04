@@ -376,6 +376,65 @@ def parse_log_lines(lines):
     return [parse_log_line(line) for line in lines]
 
 
+def log_message(line):
+    return parse_log_line(line).get("message", line)
+
+
+def is_noise_log_line(line):
+    message = log_message(line).strip()
+    if not message:
+        return True
+    if set(message) <= {"-"}:
+        return True
+    if re.match(r"^\d+\s+snapshots?$", message, flags=re.IGNORECASE):
+        return True
+    if re.match(r"^[0-9a-f]{8,}\s+\d{4}-\d{2}-\d{2}\s+", message):
+        return True
+    noise_patterns = (
+        "timestamps shown in ",
+        "keep 1 snapshots",
+        "id        time                 host",
+        "weekly snapshot",
+        "monthly snapshot",
+        "returned to group",
+        "/host_state",
+        "/db_dumps",
+        "/container_sensitive",
+        "/docker",
+    )
+    lowered = message.lower()
+    return any(pattern in lowered for pattern in noise_patterns)
+
+
+def is_important_log_line(line):
+    lowered = log_message(line).lower()
+    important_patterns = (
+        "completed successfully",
+        "backup completed",
+        "preserved staging dir",
+        "finished ",
+        "completed ",
+        "failed",
+        "failure",
+        "error",
+        "warning",
+        "timed out",
+        "consumed ",
+        "starting ",
+        "started ",
+    )
+    return any(pattern in lowered for pattern in important_patterns)
+
+
+def relevant_log_lines(lines, limit=6):
+    ordered = sort_log_lines(lines)
+    preferred = [line for line in ordered if is_important_log_line(line) and not is_noise_log_line(line)]
+    if len(preferred) >= limit:
+        return preferred[:limit]
+    fallback = [line for line in ordered if not is_noise_log_line(line) and line not in preferred]
+    return (preferred + fallback)[:limit]
+
+
 def load_json_file(path, default):
     if path.is_file():
         try:
@@ -426,6 +485,19 @@ def is_future_iso(iso, grace_seconds=60):
 def get_unit_logs(name, lines=20):
     args = [
         "journalctl",
+        f"_UID={USER_UID}",
+        f"_SYSTEMD_USER_UNIT={name}.service",
+        "--no-pager",
+        "-n",
+        str(lines),
+        "--output=short-iso",
+    ]
+    out, ok = run_args(args, timeout=10, env_vars=SYSTEMD_ENV)
+    if ok and out and "-- No entries --" not in out:
+        return sort_log_lines(out.splitlines())[:lines]
+
+    args = [
+        "journalctl",
         "--no-pager",
         "--since",
         "7 days ago",
@@ -436,22 +508,18 @@ def get_unit_logs(name, lines=20):
         "--output=short-iso",
     ]
     out, ok = run_args(args, timeout=10, env_vars=SYSTEMD_ENV)
-    if ok and out and "-- No entries --" not in out:
-        return out.splitlines()
-
-    args = [
-        "journalctl",
-        f"_UID={USER_UID}",
-        f"_SYSTEMD_USER_UNIT={name}.service",
-        "--no-pager",
-        "-n",
-        str(lines),
-        "--output=short-iso",
-    ]
-    out, ok = run_args(args, timeout=10, env_vars=SYSTEMD_ENV)
-    if not ok or not out:
+    if not ok or not out or "-- No entries --" in out:
         return []
-    return [line for line in out.splitlines() if f"{name}.service" in line or f"{name}." in line][-lines:]
+    return sort_log_lines(out.splitlines())[:lines]
+
+
+def sort_log_lines(lines):
+    def key(item):
+        index, line = item
+        ts = iso_to_utc(parse_journal_timestamp(line))
+        return (ts or datetime.min.replace(tzinfo=timezone.utc), -index)
+
+    return [line for _index, line in sorted(enumerate(lines), key=key, reverse=True)]
 
 
 def last_run_from_logs(lines):
@@ -521,7 +589,7 @@ def get_unit_info(name, fallback=None):
             timeout=8,
             env_vars=SYSTEMD_ENV,
         )
-        logs = get_unit_logs(name, 15)
+        logs = get_unit_logs(name, 80)
         last_run = (
             parse_systemd_timestamp(last_trigger)
             or parse_systemd_timestamp(inactive_ts)
@@ -556,7 +624,7 @@ def get_unit_info(name, fallback=None):
         copy = dict(fallback)
         copy["source"] = "collector"
         copy.setdefault("next_label", CHAINED_AFTER.get(name))
-        logs = get_unit_logs(name, 15)
+        logs = get_unit_logs(name, 80)
         if logs:
             log_last_run = last_run_from_logs(logs)
             copy["last_lines"] = logs
@@ -566,7 +634,7 @@ def get_unit_info(name, fallback=None):
                 copy["last_result"] = result_from_logs(logs) or copy.get("last_result", "unknown")
             copy["source"] = "journal"
         return copy
-    logs = get_unit_logs(name, 15)
+    logs = get_unit_logs(name, 80)
     if logs:
         return {
             "name": name,
@@ -980,7 +1048,7 @@ def get_recent_logs(status):
     if not priority:
         priority = [u for u in units if u.get("name") in ("backup-system-state", "backup-audit", "sync-remote-hetzner-pictures")]
     for unit in priority[:5]:
-        lines = unit.get("last_lines", [])[-6:]
+        lines = relevant_log_lines(unit.get("last_lines", []), 6)
         if lines:
             important.append({"unit": unit["name"], "lines": lines, "entries": parse_log_lines(lines)})
     return important
