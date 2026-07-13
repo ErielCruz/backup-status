@@ -939,9 +939,8 @@ def compute_restic_info():
     }
 
     def inspect_repo(key, definition):
-        cmd = ["restic", "-r", definition["repo"], "snapshots", "--json", "--latest", "7"]
-        if not definition["repo"].startswith("rclone:"):
-            cmd.insert(1, "--no-lock")
+        # Dashboard reads must stay lock-free so monitoring never blocks backups.
+        cmd = ["restic", "--no-lock", "-r", definition["repo"], "snapshots", "--json", "--latest", "7"]
         out, ok = run_args(cmd, timeout=30, env_vars=run_env)
         item = {
             "key": key,
