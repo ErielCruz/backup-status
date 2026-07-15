@@ -39,20 +39,6 @@
     </span>
   </div>
 
-  {% if health.issues or health.warnings %}
-  <div class="card{% if health.issues %} card-fail{% else %} card-warn{% endif %}">
-    <div class="card-title">What Needs Attention</div>
-    <ul class="issue-list">
-      {% for item in health.issues %}
-      <li><span class="status status-fail">FAIL</span>{{ item }}</li>
-      {% endfor %}
-      {% for item in health.warnings %}
-      <li><span class="status status-warn">WARN</span>{{ item }}</li>
-      {% endfor %}
-    </ul>
-  </div>
-  {% endif %}
-
   <div class="grid-3 top-stats">
     <div class="stat-box">
       <div class="stat-label">Audit</div>

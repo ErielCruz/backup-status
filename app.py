@@ -142,6 +142,14 @@ BACKUP_SSD_EXCLUDES = [
     "HomeServerBackups/*/latest",
 ]
 
+LIVE_PICTURES_EXCLUDES = [
+    "lost+found/**",
+    "Immich/lost+found/**",
+    "Immich/encoded-video/**",
+    "Immich/thumbs/**",
+    "Immich/.Trash-1000/**",
+]
+
 MIRROR_GROUPS = [
     {
         "id": "backup_ssd_archive",
@@ -159,11 +167,11 @@ MIRROR_GROUPS = [
         "label": "Live Pictures",
         "note": "Immich and Photoprism live library",
         "items": [
-            ("Linux source", PICTURES, ["lost+found/**", "Immich/lost+found/**"]),
-            ("SSD", f"{SAMSUNG}/Pictures", ["lost+found/**", "Immich/lost+found/**"]),
-            ("4TB", f"{TB}/Pictures", ["lost+found/**", "Immich/lost+found/**"]),
-            ("B2", "pictures-ecc:pictures-ecc/Pictures", []),
-            ("Hetzner", "hetzner-4tb:Pictures/Pictures", []),
+            ("Linux source", PICTURES, LIVE_PICTURES_EXCLUDES),
+            ("SSD", f"{SAMSUNG}/Pictures", LIVE_PICTURES_EXCLUDES),
+            ("4TB", f"{TB}/Pictures", LIVE_PICTURES_EXCLUDES),
+            ("B2", "pictures-ecc:pictures-ecc/Pictures", LIVE_PICTURES_EXCLUDES),
+            ("Hetzner", "hetzner-4tb:Pictures/Pictures", LIVE_PICTURES_EXCLUDES),
         ],
     },
     {
