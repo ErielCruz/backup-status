@@ -783,6 +783,59 @@ def mirror_timeout(group_id, label, target):
     return 60
 
 
+def source_changed_after_sync(group_id, items, trigger_ts):
+    """Return the newest source-file timestamp when it changed after the sync.
+
+    A live library can legitimately grow after the chained mirror run. That is
+    a pending replication window, not evidence that an already-completed sync
+    failed. We only apply this distinction to the live Pictures source.
+    """
+    if group_id != "live_pictures" or not trigger_ts:
+        return None
+    source = next((item for item in items if item.get("label") == "Linux source"), None)
+    if not source or source.get("status") not in ("ok", "stale"):
+        return None
+
+    trigger = iso_to_utc(trigger_ts)
+    if not trigger:
+        return None
+
+    excluded = {
+        "lost+found",
+        "Immich/lost+found",
+        "Immich/encoded-video",
+        "Immich/thumbs",
+        "Immich/.Trash-1000",
+    }
+    newest = None
+    for root, dirs, files in os.walk(PICTURES, onerror=lambda _error: None):
+        relative_root = os.path.relpath(root, PICTURES)
+        if relative_root == ".":
+            relative_root = ""
+        dirs[:] = [
+            directory
+            for directory in dirs
+            if os.path.join(relative_root, directory) not in excluded
+        ]
+        for filename in files:
+            relative_path = os.path.join(relative_root, filename)
+            if any(relative_path == path or relative_path.startswith(path + os.sep) for path in excluded):
+                continue
+            try:
+                modified = datetime.fromtimestamp(
+                    os.stat(os.path.join(root, filename), follow_symlinks=False).st_mtime,
+                    timezone.utc,
+                )
+            except OSError:
+                continue
+            if newest is None or modified > newest:
+                newest = modified
+
+    if newest and newest > trigger:
+        return newest.isoformat()
+    return None
+
+
 def compare_to_source(items):
     source = next((item for item in items if item["count"] is not None and item["bytes"] is not None), None)
     if not source:
@@ -880,11 +933,16 @@ def compute_mirror_checks(trigger_ts=None):
                 items.append(info)
         order = {label: index for index, (label, _target, _excludes) in enumerate(group["items"])}
         items.sort(key=lambda item: order.get(item["label"], 999))
+        status = compare_to_source(items)
+        pending_since = source_changed_after_sync(group["id"], items, trigger_ts)
+        if status == "mismatch" and pending_since:
+            status = "pending"
         groups.append({
             "id": group["id"],
             "label": group["label"],
             "note": group["note"],
-            "status": compare_to_source(items),
+            "status": status,
+            "pending_since": pending_since,
             "items": items,
         })
     record = {
@@ -1046,6 +1104,8 @@ def get_overall_health(status, audit, mirrors, restic):
     for group in mirrors:
         if group["status"] == "mismatch":
             issues.append(f"{group['label']}: file count or size mismatch")
+        elif group["status"] == "pending":
+            warnings.append(f"{group['label']}: new source files are waiting for the next sync")
         elif group["status"] == "unknown":
             warnings.append(f"{group['label']}: size check unavailable")
 
