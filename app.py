@@ -837,6 +837,18 @@ def source_changed_after_sync(group_id, items, trigger_ts):
 
 
 def compare_to_source(items):
+    # Never compare remote copies against a stale/incomplete local source.
+    # A disconnected or not-yet-mounted local source can otherwise make the
+    # remotes look like they contain thousands of unexpected files.
+    source_labels = {"Linux source", "SSD source", "4TB source"}
+    unavailable_sources = [
+        item for item in items
+        if item.get("label") in source_labels
+        and item.get("status") not in ("ok", "stale")
+    ]
+    if unavailable_sources:
+        return "unknown"
+
     source = next((item for item in items if item["count"] is not None and item["bytes"] is not None), None)
     if not source:
         return "unknown"

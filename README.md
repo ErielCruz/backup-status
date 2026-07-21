@@ -88,6 +88,11 @@ Required mounts:
 - `/run/user/1000:/run/user/1000:ro`
 - `/var/log/journal:/var/log/journal:ro`
 
+The container healthcheck also requires the live Pictures and 4TB photo paths
+to exist. This prevents a stale or incomplete container mount from producing a
+false mirror mismatch; the dashboard reports an unavailable local source as
+`UNKNOWN` until the mount is restored.
+
 Rebuild and restart:
 
 ```bash
