@@ -61,7 +61,7 @@ The first page render does not wait for every remote provider. It loads immediat
 
 Mirror parity checks are persisted in `/state/mirror-checks-latest.json`. The web app reuses that saved result when no relevant sync or audit service has completed since the check. A full `rclone size` comparison only starts when the saved result is missing or a newer sync/audit run exists. This keeps page loads cheap and avoids re-counting remote files just because the dashboard was opened.
 
-Live Pictures parity distinguishes a normal replication window from a failed sync. If the Linux source has newer files than the last completed mirror chain, the dashboard shows `PENDING SYNC` and a warning instead of a mismatch. A mismatch remains a failure when the source has not changed since the sync.
+Live Pictures parity distinguishes a normal replication window from a failed sync. If the Linux source has newer files than the last completed mirror chain, the dashboard shows `PENDING SYNC` and a warning instead of a mismatch. This detects both normal file writes and Immich library moves that preserve a media file's original timestamp. A mismatch remains a failure when the source has not changed since the sync.
 
 Loading the site does not start `backup-audit.service`. The dashboard only reads `/state/audit-latest.json`; scheduled/chained backup services run the audit.
 
