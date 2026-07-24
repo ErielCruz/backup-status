@@ -61,6 +61,8 @@ The first page render does not wait for every remote provider. It loads immediat
 
 Mirror parity checks are persisted in `/state/mirror-checks-latest.json`. The web app reuses that saved result when no relevant sync or audit service has completed since the check. A full `rclone size` comparison only starts when the saved result is missing or a newer sync/audit run exists. This keeps page loads cheap and avoids re-counting remote files just because the dashboard was opened.
 
+Live Pictures parity distinguishes a normal replication window from a failed sync. If the Linux source has newer files than the last completed mirror chain, the dashboard shows `PENDING SYNC` and a warning instead of a mismatch. A mismatch remains a failure when the source has not changed since the sync.
+
 Loading the site does not start `backup-audit.service`. The dashboard only reads `/state/audit-latest.json`; scheduled/chained backup services run the audit.
 
 Some services are chained instead of timer-driven. For those rows, `Next Run` shows the upstream trigger, for example `after secrets`, instead of a blank timer value. If systemd does not expose a timestamp for a completed oneshot service, the dashboard derives `Last Run` from the latest journal `Finished`/`Failed` line.
@@ -85,6 +87,11 @@ Required mounts:
 - `/home/eriel/.config/rclone:/root/.config/rclone:ro`
 - `/run/user/1000:/run/user/1000:ro`
 - `/var/log/journal:/var/log/journal:ro`
+
+The container healthcheck also requires the live Pictures and 4TB photo paths
+to exist. This prevents a stale or incomplete container mount from producing a
+false mirror mismatch; the dashboard reports an unavailable local source as
+`UNKNOWN` until the mount is restored.
 
 Rebuild and restart:
 

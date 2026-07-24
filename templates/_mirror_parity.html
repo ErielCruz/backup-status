@@ -17,7 +17,7 @@
     </div>
   </div>
   {% for group in mirrors %}
-  <div class="mirror-group{% if group.status == 'mismatch' %} mirror-bad{% elif group.status == 'unknown' %} mirror-warn{% endif %}">
+  <div class="mirror-group{% if group.status == 'mismatch' %} mirror-bad{% elif group.status in ['unknown', 'pending'] %} mirror-warn{% endif %}">
     <div class="mirror-head">
       <div>
         <strong>{{ group.label }}</strong>
@@ -27,6 +27,8 @@
         <span class="status status-pass">MATCH</span>
       {% elif group.status == "mismatch" %}
         <span class="status status-fail">MISMATCH</span>
+      {% elif group.status == "pending" %}
+        <span class="status status-warn">PENDING SYNC</span>
       {% elif group.status == "loading" %}
         <span class="status status-warn">LOADING</span>
       {% else %}
@@ -69,7 +71,12 @@
             <td colspan="5" class="td-warn">Live check timed out; showing last audit value.</td>
           </tr>
           {% endif %}
-          {% endfor %}
+      {% endfor %}
+      {% if group.status == "pending" %}
+      <tr>
+        <td colspan="5" class="td-warn">The Linux source changed after the last completed sync; this will be checked again after the next mirror run.</td>
+      </tr>
+      {% endif %}
         </tbody>
       </table>
     </div>
