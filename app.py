@@ -784,7 +784,7 @@ def mirror_timeout(group_id, label, target):
 
 
 def source_changed_after_sync(group_id, items, trigger_ts):
-    """Return the newest source-file timestamp when it changed after the sync.
+    """Return the newest source-file change timestamp after the last sync.
 
     A live library can legitimately grow after the chained mirror run. That is
     a pending replication window, not evidence that an already-completed sync
@@ -822,8 +822,13 @@ def source_changed_after_sync(group_id, items, trigger_ts):
             if any(relative_path == path or relative_path.startswith(path + os.sep) for path in excluded):
                 continue
             try:
+                stat_result = os.stat(os.path.join(root, filename), follow_symlinks=False)
+                # Immich can move a completed upload into its library while
+                # preserving the original media mtime.  ctime changes for that
+                # move, so use the newest of the two to identify files that
+                # appeared after rclone had already scanned the source tree.
                 modified = datetime.fromtimestamp(
-                    os.stat(os.path.join(root, filename), follow_symlinks=False).st_mtime,
+                    max(stat_result.st_mtime, stat_result.st_ctime),
                     timezone.utc,
                 )
             except OSError:
