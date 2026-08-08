@@ -46,7 +46,6 @@ PIPELINES = {
         "description": "Backup_SSD data, Pictures, Photos, Videos to local and remote mirrors",
         "units": [
             "sync-local-backup-ssd",
-            "sync-local-pictures-ssd",
             "sync-local-pictures",
             "sync-remote-b2-backup-ssd",
             "sync-remote-b2-pictures",
@@ -66,7 +65,6 @@ STANDALONE_UNITS = ["backup-restore-test", "log-rotate", "pull-dockge-compose", 
 
 MIRROR_TRIGGER_UNITS = [
     "sync-local-backup-ssd",
-    "sync-local-pictures-ssd",
     "sync-local-pictures",
     "sync-remote-b2-backup-ssd",
     "sync-remote-b2-pictures",
@@ -79,8 +77,7 @@ MIRROR_TRIGGER_UNITS = [
 CHAINED_AFTER = {
     "backup-critical-secrets": "after system backup",
     "sync-local-backup-ssd": "after secrets",
-    "sync-local-pictures-ssd": "after Backup_SSD local mirror",
-    "sync-local-pictures": "after Pictures SSD mirror",
+    "sync-local-pictures": "after Backup_SSD local mirror",
     "sync-remote-b2-backup-ssd": "after local Pictures mirror",
     "sync-remote-b2-pictures": "after B2 Backup_SSD mirror",
     "sync-remote-hetzner-backup-ssd": "after B2 Pictures mirror",
