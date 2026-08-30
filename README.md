@@ -17,7 +17,7 @@ The app matches the current backup design:
 
 - System/container backups are encrypted restic snapshots in SSD, 4TB, B2, and Hetzner repos.
 - Secrets are encrypted restic snapshots in SSD, 4TB, B2, and Hetzner repos.
-- Raw mirrors compare local source data against SSD, 4TB, B2, and Hetzner where applicable.
+- Live Pictures is mirrored from the Linux source to 4TB, B2, and Hetzner. The Samsung SSD is the source only for the separate `Backup_SSD` photo and video archives.
 - `Long_Term_Backup` is the exception: source is 4TB and backup is Hetzner only.
 
 Restic repos are not compared by raw file size because restic is deduplicated and encrypted. The dashboard checks snapshot availability and latest snapshot time instead.

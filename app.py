@@ -162,10 +162,9 @@ MIRROR_GROUPS = [
     {
         "id": "live_pictures",
         "label": "Live Pictures",
-        "note": "Immich and Photoprism live library",
+        "note": "Immich and Photoprism live library mirrored to 4TB and remote storage",
         "items": [
             ("Linux source", PICTURES, LIVE_PICTURES_EXCLUDES),
-            ("SSD", f"{SAMSUNG}/Pictures", LIVE_PICTURES_EXCLUDES),
             ("4TB", f"{TB}/Pictures", LIVE_PICTURES_EXCLUDES),
             ("B2", "pictures-ecc:pictures-ecc/Pictures", LIVE_PICTURES_EXCLUDES),
             ("Hetzner", "hetzner-4tb:Pictures/Pictures", LIVE_PICTURES_EXCLUDES),
