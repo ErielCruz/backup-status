@@ -6,7 +6,7 @@ import subprocess
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request
@@ -334,6 +334,54 @@ def parse_systemd_timestamp(value):
         return value
 
 
+def parse_systemd_timespan(value):
+    """Return a systemd-formatted duration in seconds."""
+    if not value or value in ("0", "n/a", "[not set]"):
+        return None
+    value = value.strip()
+    if re.fullmatch(r"-?\d+", value):
+        return int(value) / 1e6
+
+    units = {
+        "w": 7 * 86400,
+        "week": 7 * 86400,
+        "weeks": 7 * 86400,
+        "d": 86400,
+        "day": 86400,
+        "days": 86400,
+        "h": 3600,
+        "hour": 3600,
+        "hours": 3600,
+        "m": 60,
+        "min": 60,
+        "minute": 60,
+        "minutes": 60,
+        "s": 1,
+        "sec": 1,
+        "second": 1,
+        "seconds": 1,
+        "ms": 1e-3,
+        "millisecond": 1e-3,
+        "milliseconds": 1e-3,
+        "us": 1e-6,
+        "microsecond": 1e-6,
+        "microseconds": 1e-6,
+    }
+    matches = list(re.finditer(r"(\d+(?:\.\d+)?)(weeks?|w|days?|d|hours?|h|minutes?|min|m|seconds?|sec|s|milliseconds?|ms|microseconds?|us)", value))
+    if not matches or "".join(match.group(0) for match in matches).replace(" ", "") != value.replace(" ", ""):
+        return None
+    return sum(float(match.group(1)) * units[match.group(2)] for match in matches)
+
+
+def parse_systemd_monotonic_timestamp(value):
+    """Convert an absolute monotonic deadline to a wall-clock ISO timestamp."""
+    seconds = parse_systemd_timespan(value)
+    if seconds is None:
+        return None
+    remaining = seconds - time.monotonic()
+    return (datetime.now(timezone.utc) + timedelta(seconds=max(0.0, remaining))).isoformat()
+
+
 def parse_journal_timestamp(line):
     match = re.match(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:[+-]\d{2}:\d{2}|Z))", line)
     if not match:
@@ -568,6 +616,11 @@ def get_unit_info(name, fallback=None):
             timeout=8,
             env_vars=SYSTEMD_ENV,
         )
+        next_monotonic_out, _ = run_args(
+            ["systemctl", "--user", "show", f"{name}.timer", "-p", "NextElapseUSecMonotonic", "--value"],
+            timeout=8,
+            env_vars=SYSTEMD_ENV,
+        )
         last_trigger, _ = run_args(
             ["systemctl", "--user", "show", f"{name}.timer", "-p", "LastTriggerUSec", "--value"],
             timeout=8,
@@ -586,7 +639,7 @@ def get_unit_info(name, fallback=None):
             or last_run_from_logs(logs)
             or (fallback or {}).get("last_run")
         )
-        next_run = parse_systemd_timestamp(next_out)
+        next_run = parse_systemd_timestamp(next_out) or parse_systemd_monotonic_timestamp(next_monotonic_out)
         if active_state in ("active", "activating"):
             last_result = "running"
         elif result:
