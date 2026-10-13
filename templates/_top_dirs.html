@@ -1,0 +1,47 @@
+<div id="top-dirs" class="card"{% if top_dirs_refreshing %} hx-get="/api/top-dirs" hx-trigger="every 15s" hx-swap="outerHTML"{% endif %}>
+  <div class="section-header">
+    <div>
+      <div class="card-title">Top Directories</div>
+      <div class="section-note">Largest real sub-folders on each drive; top-level containers are expanded.</div>
+      <div class="section-note">
+        Last scan:
+        {{ top_dirs_meta.checked_at | fmt_time_ago if top_dirs_meta.checked_at else "not yet run" }}.
+        {% if not top_dirs_refreshing %}
+          Showing cached scan; refreshed every {{ top_dirs_meta.hours }} hours.
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="top-dirs-grid">
+    {% for drive in top_dirs %}
+    <div class="top-dirs-drive">
+      <div class="top-dirs-head">
+        <strong>{{ drive.label }}</strong>
+        <span class="drive-mount">{{ drive.mount }}</span>
+      </div>
+      {% if drive.status == "loading" %}
+        <div class="status status-warn">LOADING</div>
+        <div class="text-muted">Scanning while the rest of the dashboard loads.</div>
+      {% elif drive.status in ["error", "timeout", "unavailable"] %}
+        <div class="td-warn">{{ drive.error or "Unavailable" }}</div>
+      {% elif drive.dirs %}
+        <div class="top-dirs-list">
+          {% for dir in drive.dirs %}
+          <div class="top-dirs-item">
+            <div class="top-dirs-item-head">
+              <span class="top-dirs-name" title="{{ drive.mount }}/{{ dir.path }}">{{ dir.name }}</span>
+              <span class="top-dirs-size">{{ dir.bytes | fmt_bytes }}</span>
+            </div>
+            <div class="top-dirs-row-bar">
+              <div class="top-dirs-row-fill" style="width: {{ dir.pct }}%"></div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="text-muted">No directories found.</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>

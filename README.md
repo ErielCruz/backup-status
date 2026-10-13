@@ -109,6 +109,7 @@ docker compose up -d --build
 | `GET /api/refresh` | HTMX dashboard refresh |
 | `GET /api/mirrors` | Mirror Parity card refresh while slow size checks are loading |
 | `GET /api/restic` | Restic Snapshots card refresh while snapshot checks are loading |
+| `GET /api/top-dirs` | Top Directories card refresh while the disk scan is running |
 | `GET /api/logs/<unit>` | Latest invocation journal lines for an allowed backup/sync unit |
 | `POST /api/trigger/<unit>` | Start an allowed backup/sync unit |
 | `GET /api/clear-cache` | Clear in-memory dashboard cache and saved mirror parity cache |

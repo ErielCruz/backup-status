@@ -24,6 +24,8 @@
     {% endfor %}
   </div>
 
+  {% include "_top_dirs.html" %}
+
   <div class="status-banner status-banner-{{ health.status }}">
     <span class="status status-{% if health.status == 'ok' %}pass{% else %}{{ health.status }}{% endif %}">
       {% if health.status == "ok" %}OK{% elif health.status == "warn" %}WARN{% else %}FAIL{% endif %}

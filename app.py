@@ -28,6 +28,16 @@ MIRROR_CACHE_FILE = Path(STATE_DIR) / "mirror-checks-latest.json"
 RESTIC_PASSWORD_FILE = env("RESTIC_PASSWORD_FILE", "/run/secrets/restic_password")
 STATUS_FILE = Path(LOG_DIR) / "status.json"
 HISTORY_FILE = Path(LOG_DIR) / "failure_history.json"
+TOP_DIRS_CACHE_FILE = Path(STATE_DIR) / "top-dirs-latest.json"
+TOP_DIRS_LIMIT = 5
+TOP_DIRS_TTL = int(env("TOP_DIRS_TTL", "21600"))
+TOP_DIRS_TIMEOUT = int(env("TOP_DIRS_TIMEOUT", "600"))
+
+TOP_DIR_DRIVES = [
+    {"label": "Samsung SSD", "mount": SAMSUNG},
+    {"label": "4TB Drive", "mount": TB},
+    {"label": "Pictures Source", "mount": PICTURES},
+]
 
 USER_UID = env("BACKUP_USER_UID", "1000")
 SYSTEMD_ENV = {
@@ -1153,6 +1163,202 @@ def get_disk():
     return rows
 
 
+def top_dirs_for_mount(mount, limit=TOP_DIRS_LIMIT):
+    item = {
+        "label": None,
+        "mount": mount,
+        "dirs": [],
+        "total_bytes": None,
+        "status": "error",
+        "error": "",
+    }
+    if not os.path.isdir(mount):
+        item["status"] = "unavailable"
+        item["error"] = "Mount not present"
+        return item
+
+    out, ok = run_args(["du", "-x", "-k", mount], timeout=TOP_DIRS_TIMEOUT)
+    sizes = {}
+    total_bytes = None
+    for line in out.splitlines():
+        parts = line.split("\t", 1)
+        if len(parts) != 2:
+            parts = line.split(None, 1)
+        if len(parts) != 2:
+            continue
+        size_txt, path = parts[0].strip(), parts[1].strip()
+        if not size_txt.isdigit():
+            continue
+        path = os.path.normpath(path)
+        if path == mount:
+            total_bytes = int(size_txt) * 1024
+            continue
+        sizes[path] = int(size_txt) * 1024
+
+    top = choose_top_consumers(mount, sizes, limit)
+    if top:
+        largest = top[0][1]
+        item["dirs"] = [
+            {
+                "name": os.path.basename(path) or path,
+                "path": os.path.relpath(path, mount),
+                "bytes": size,
+                "pct": round(size / largest * 100, 1) if largest else 0,
+            }
+            for path, size in top
+        ]
+        item["total_bytes"] = total_bytes
+        item["status"] = "ok"
+        return item
+
+    if "timed out" in out.lower():
+        item["status"] = "timeout"
+        item["error"] = "Size scan timed out; it will retry later."
+    else:
+        item["error"] = (out or "No directories found")[:240]
+    return item
+
+
+def choose_top_consumers(mount, sizes, limit):
+    """Walk the tree and pick the top directories that actually hold data.
+
+    Top-level folder names are skipped because they are usually just containers
+    for the real consumers. A directory is opened when a single sub-folder holds
+    more than half of its size; once its space is spread out, the directory
+    itself becomes a candidate.
+    """
+    from collections import defaultdict
+
+    children = defaultdict(list)
+    mount = os.path.normpath(mount)
+    for path in sizes:
+        children[os.path.dirname(path)].append(path)
+
+    def drill(path, depth):
+        own = sizes.get(path, 0)
+        kids = children.get(path, [])
+        if not kids:
+            return [(path, own)] if own > 0 else []
+        if depth == 1:
+            result = []
+            for kid in kids:
+                result.extend(drill(kid, depth + 1))
+            return result
+        largest = max((sizes.get(kid, 0) for kid in kids), default=0)
+        if largest and largest * 2 > own:
+            result = []
+            for kid in kids:
+                result.extend(drill(kid, depth + 1))
+            return result
+        return [(path, own)] if own > 0 else []
+
+    consumers = []
+    for top in children.get(mount, []):
+        consumers.extend(drill(top, 1))
+    consumers.sort(key=lambda pair: pair[1], reverse=True)
+    return consumers[:limit]
+
+
+def compute_top_dirs():
+    results = []
+    with ThreadPoolExecutor(max_workers=len(TOP_DIR_DRIVES)) as executor:
+        futures = {
+            executor.submit(top_dirs_for_mount, drive["mount"]): drive
+            for drive in TOP_DIR_DRIVES
+        }
+        for future in as_completed(futures):
+            drive = futures[future]
+            try:
+                item = future.result()
+            except Exception as exc:
+                item = {
+                    "label": drive["label"],
+                    "mount": drive["mount"],
+                    "dirs": [],
+                    "total_bytes": None,
+                    "status": "error",
+                    "error": str(exc),
+                }
+            item["label"] = drive["label"]
+            results.append(item)
+    order = {drive["label"]: index for index, drive in enumerate(TOP_DIR_DRIVES)}
+    results.sort(key=lambda item: order.get(item["label"], 999))
+    record = {
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+        "drives": results,
+    }
+    save_top_dirs_cache(record)
+    return record
+
+
+def load_top_dirs_cache():
+    data = cached("top_dirs_record")
+    if data is not None:
+        return data
+    record = load_json_file(TOP_DIRS_CACHE_FILE, {})
+    if record.get("drives"):
+        set_cache("top_dirs_record", record, ttl=3600)
+    return record
+
+
+def save_top_dirs_cache(record):
+    set_cache("top_dirs_record", record, ttl=3600)
+    write_json_file(TOP_DIRS_CACHE_FILE, record)
+
+
+def top_dirs_stale(record):
+    checked = iso_to_utc(record.get("checked_at"))
+    if not checked:
+        return True
+    return (datetime.now(timezone.utc) - checked).total_seconds() > TOP_DIRS_TTL
+
+
+def build_top_dirs_placeholders():
+    return [
+        {
+            "label": drive["label"],
+            "mount": drive["mount"],
+            "dirs": [],
+            "total_bytes": None,
+            "status": "loading",
+            "error": "",
+        }
+        for drive in TOP_DIR_DRIVES
+    ]
+
+
+def get_top_dirs():
+    record = load_top_dirs_cache()
+    if record.get("drives"):
+        if top_dirs_stale(record):
+            refresh_in_background("top_dirs", compute_top_dirs)
+            for drive in record["drives"]:
+                drive["cache_state"] = "refreshing"
+        return record["drives"]
+    refresh_in_background("top_dirs", compute_top_dirs)
+    return build_top_dirs_placeholders()
+
+
+def is_top_dirs_refreshing(top_dirs):
+    return any(
+        drive.get("status") == "loading" or drive.get("cache_state") == "refreshing"
+        for drive in top_dirs
+    )
+
+
+def build_top_dirs_context():
+    top_dirs = get_top_dirs()
+    record = load_top_dirs_cache()
+    return {
+        "top_dirs": top_dirs,
+        "top_dirs_refreshing": is_top_dirs_refreshing(top_dirs),
+        "top_dirs_meta": {
+            "checked_at": record.get("checked_at"),
+            "hours": int(TOP_DIRS_TTL // 3600),
+        },
+    }
+
+
 def get_overall_health(status, audit, mirrors, restic):
     issues = []
     warnings = []
@@ -1238,6 +1444,7 @@ def build_context():
     audit = get_audit_state()
     mirror_context = build_mirror_context(status, audit)
     restic_context = build_restic_context()
+    top_dirs_context = build_top_dirs_context()
     return {
         "now": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
         "status": status,
@@ -1245,6 +1452,7 @@ def build_context():
         "health": get_overall_health(status, audit, mirror_context["mirrors"], restic_context["restic"]),
         **mirror_context,
         **restic_context,
+        **top_dirs_context,
         "audit": audit,
         "audit_verify_rows": format_audit_verifications(audit),
         "history": load_failure_history(),
@@ -1274,6 +1482,11 @@ def api_mirrors():
 @app.route("/api/restic")
 def api_restic():
     return render_template("_restic_snapshots.html", **build_restic_context())
+
+
+@app.route("/api/top-dirs")
+def api_top_dirs():
+    return render_template("_top_dirs.html", **build_top_dirs_context())
 
 
 @app.route("/api/logs/<unit_name>")
@@ -1308,6 +1521,7 @@ def clear_cache():
         _cache.clear()
     try:
         MIRROR_CACHE_FILE.unlink(missing_ok=True)
+        TOP_DIRS_CACHE_FILE.unlink(missing_ok=True)
     except Exception:
         pass
     return jsonify({"status": "cache cleared"})
