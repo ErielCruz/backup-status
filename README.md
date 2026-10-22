@@ -48,7 +48,7 @@ status and keep only the backup evidence checks that are unique to this setup.
 That would reduce custom code around timers, last/next run display, and generic
 service health while preserving the checks needed to prove backups are complete.
 
-The Raw Mirrors card separates hourly media (live Pictures and SSD Photos/Videos), other Backup_SSD files, and the separate long-term archive. Each section explains its scope and schedule.
+Job cards show System/Containers/Secrets, Other Backup_SSD Files, hourly Raw Mirrors — Media, and Long-Term Archive in that order. The detailed Raw Mirrors card uses the same archive-before-media order and explains each scope and schedule. Collector fallback data follows unit names across these presentation groups.
 
 ## Data Sources
 

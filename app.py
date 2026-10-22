@@ -51,15 +51,21 @@ PIPELINES = {
         "description": "Encrypted restic snapshots to SSD, 4TB, B2, Hetzner",
         "units": ["backup-system-state", "backup-critical-secrets"],
     },
-    "syncs": {
-        "label": "Raw Mirrors",
-        "description": "Backup_SSD data, Pictures, Photos, Videos to local and remote mirrors",
+    "archive": {
+        "label": "Other Backup_SSD Files",
+        "description": "Codes, encrypted Bitwarden exports, and other non-media files. Local copy after secrets; remote copies also run in the hourly chain.",
         "units": [
             "sync-local-backup-ssd",
-            "sync-local-pictures",
             "sync-remote-b2-backup-ssd",
-            "sync-remote-b2-pictures",
             "sync-remote-hetzner-backup-ssd",
+        ],
+    },
+    "syncs": {
+        "label": "Raw Mirrors — Media",
+        "description": "Hourly: Immich, Photoprism, and SSD Photos/Videos to 4TB, B2, and Hetzner; audit follows the chain.",
+        "units": [
+            "sync-local-pictures",
+            "sync-remote-b2-pictures",
             "sync-remote-hetzner-pictures",
             "backup-audit",
         ],
@@ -722,9 +728,14 @@ def load_status():
     collector = load_json_file(STATUS_FILE, {"pipelines": {}, "standalone": [], "updated": None})
     status = {"updated": collector.get("updated"), "pipelines": {}, "standalone": []}
 
+    # Collector groups may differ from the presentation groups. Preserve each
+    # unit's fallback status and logs when moving it between dashboard cards.
+    fallback_units = {
+        unit.get("name"): unit
+        for pipeline in collector.get("pipelines", {}).values()
+        for unit in pipeline.get("units", [])
+    }
     for pid, definition in PIPELINES.items():
-        fallback_pipeline = collector.get("pipelines", {}).get(pid, {})
-        fallback_units = {unit.get("name"): unit for unit in fallback_pipeline.get("units", [])}
         units = [get_unit_info(name, fallback_units.get(name)) for name in definition["units"]]
         failures = [u for u in units if u.get("last_result") in ("failure", "failed")]
         running = [u for u in units if u.get("last_result") == "running"]
