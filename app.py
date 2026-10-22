@@ -53,7 +53,7 @@ PIPELINES = {
     },
     "archive": {
         "label": "Other Backup_SSD Files",
-        "description": "Codes, encrypted Bitwarden exports, and other non-media files. Local copy after secrets; remote copies also run in the hourly chain.",
+        "description": "Codes, encrypted Bitwarden exports, and other non-media files. Four times daily after secrets: local copy, then B2, then Hetzner.",
         "units": [
             "sync-local-backup-ssd",
             "sync-remote-b2-backup-ssd",
@@ -93,12 +93,12 @@ MIRROR_TRIGGER_UNITS = [
 CHAINED_AFTER = {
     "backup-critical-secrets": "after system backup",
     "sync-local-backup-ssd": "after secrets",
-    "sync-local-pictures": "after Backup_SSD local mirror",
-    "sync-remote-b2-backup-ssd": "after local Pictures mirror",
-    "sync-remote-b2-pictures": "after B2 Backup_SSD mirror",
-    "sync-remote-hetzner-backup-ssd": "after B2 Pictures mirror",
-    "sync-remote-hetzner-pictures": "after Hetzner Backup_SSD mirror",
-    "backup-audit": "after Hetzner Pictures mirror",
+    "sync-local-pictures": "hourly timer",
+    "sync-remote-b2-backup-ssd": "after local Backup_SSD mirror",
+    "sync-remote-b2-pictures": "after local media mirror",
+    "sync-remote-hetzner-backup-ssd": "after B2 Backup_SSD mirror",
+    "sync-remote-hetzner-pictures": "after B2 media mirror",
+    "backup-audit": "after either mirror chain",
     "sync-remote-hetzner-long-term": "after audit",
 }
 

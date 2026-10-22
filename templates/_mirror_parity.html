@@ -17,7 +17,7 @@
     </div>
   </div>
   {% set sections = [
-    ('Other Backup_SSD files', 'Codes, encrypted Bitwarden exports, and other archive files. Local sync runs after secrets; remote syncs also run in the hourly chain. Photos, Videos, Other, Yuzu_last, and restic repositories are excluded.', ['backup_ssd_archive']),
+    ('Other Backup_SSD files', 'Codes, encrypted Bitwarden exports, and other archive files. Four times daily after secrets: local sync, then B2, then Hetzner. Photos, Videos, Other, Yuzu_last, and restic repositories are excluded.', ['backup_ssd_archive']),
     ('Media — hourly', 'Immich and Photoprism libraries, plus SSD Photos and Videos, mirrored to 4TB, B2, and Hetzner every hour.', ['live_pictures', 'photo_archive', 'video_archive']),
     ('Long-term archive', 'Separate archive from 4TB to Hetzner only, with its own schedule and a trigger after the media chain.', ['long_term'])
   ] %}
