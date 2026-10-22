@@ -48,6 +48,8 @@ status and keep only the backup evidence checks that are unique to this setup.
 That would reduce custom code around timers, last/next run display, and generic
 service health while preserving the checks needed to prove backups are complete.
 
+The Raw Mirrors card separates hourly media (live Pictures and SSD Photos/Videos), other Backup_SSD files, and the separate long-term archive. Each section explains its scope and schedule.
+
 ## Data Sources
 
 - Live systemd user units through `/run/user/1000/bus`

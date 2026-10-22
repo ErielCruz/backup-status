@@ -717,3 +717,7 @@ tr:last-child td {
     padding: 7px 6px;
   }
 }
+
+.mirror-section + .mirror-section { margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--border, #334155); }
+.mirror-section h3 { margin: 0 0 6px; font-size: 1rem; }
+.mirror-section > .section-note { margin: 0 0 14px; }

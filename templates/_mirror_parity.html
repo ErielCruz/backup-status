@@ -1,8 +1,8 @@
 <div id="mirror-parity" class="card"{% if mirror_refreshing %} hx-get="/api/mirrors" hx-trigger="every 15s" hx-swap="outerHTML"{% endif %}>
   <div class="section-header">
     <div>
-      <div class="card-title">Mirror Parity</div>
-      <div class="section-note">Raw rclone mirrors should match count and size inside each group.</div>
+      <div class="card-title">Raw Mirrors</div>
+      <div class="section-note">File copies grouped by what they protect. Counts and sizes should match within each group.</div>
       <div class="section-note">
         Last full parity check:
         {{ mirror_meta.checked_at | fmt_time_ago if mirror_meta.checked_at else "not recorded" }}.
@@ -16,7 +16,16 @@
       </div>
     </div>
   </div>
-  {% for group in mirrors %}
+  {% set sections = [
+    ('Media — hourly', 'Immich and Photoprism libraries, plus SSD Photos and Videos, mirrored to 4TB, B2, and Hetzner every hour.', ['live_pictures', 'photo_archive', 'video_archive']),
+    ('Other Backup_SSD files', 'Codes, encrypted Bitwarden exports, and other archive files. Local sync runs after secrets; remote syncs also run in the hourly chain. Photos, Videos, Other, Yuzu_last, and restic repositories are excluded.', ['backup_ssd_archive']),
+    ('Long-term archive', 'Separate archive from 4TB to Hetzner only, with its own schedule and a trigger after the media chain.', ['long_term'])
+  ] %}
+  {% for title, description, group_ids in sections %}
+  <section class="mirror-section" aria-label="{{ title }}">
+    <h3>{{ title }}</h3>
+    <p class="section-note">{{ description }}</p>
+  {% for group in mirrors if group.id in group_ids %}
   <div class="mirror-group{% if group.status == 'mismatch' %} mirror-bad{% elif group.status in ['unknown', 'pending'] %} mirror-warn{% endif %}">
     <div class="mirror-head">
       <div>
@@ -81,5 +90,7 @@
       </table>
     </div>
   </div>
+  {% endfor %}
+  </section>
   {% endfor %}
 </div>
