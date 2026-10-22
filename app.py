@@ -140,6 +140,8 @@ RESTIC_REPOS = {
 }
 
 BACKUP_SSD_EXCLUDES = [
+    "General backup/Yuzu_last/**",
+    "General backup/Other/**",
     "Photos/**",
     "Videos/**",
     "HomeServerBackups/restic-backups/**",
@@ -161,7 +163,7 @@ MIRROR_GROUPS = [
     {
         "id": "backup_ssd_archive",
         "label": "Backup_SSD Archive Data",
-        "note": "Raw archive mirror, excluding Photos, Videos, restic repos, and old run metadata",
+        "note": "Raw archive mirror, excluding General backup/Other, General backup/Yuzu_last, Photos, Videos, restic repos, and old run metadata",
         "items": [
             ("SSD source", f"{SAMSUNG}/Backup_SSD", BACKUP_SSD_EXCLUDES),
             ("4TB", f"{TB}/Backup_SSD", BACKUP_SSD_EXCLUDES),

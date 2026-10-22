@@ -59,6 +59,8 @@ service health while preserving the checks needed to prove backups are complete.
 
 The first page render does not wait for every remote provider. It loads immediately from live systemd state and the last audit, then refreshes restic and rclone parity checks in the background. Slow providers show `LOADING`, `UNKNOWN`, or the provider error instead of blocking the dashboard. The dashboard does not automatically swap the whole page on a timer, so opened unit log drawers stay open until the user closes them or reloads the page. While slow checks are still loading, only the Mirror Parity and Restic Snapshots cards poll their own partial endpoints and replace themselves when new data is ready.
 
+All Backup_SSD archive targets (4TB, B2, and Hetzner) use the same archive comparison exclusions: `General backup/Other/**` and `General backup/Yuzu_last/**` are retained only on the original Samsung SSD. The dashboard applies these exclusions on both sides.
+
 Mirror parity checks are persisted in `/state/mirror-checks-latest.json`. The web app reuses that saved result when no relevant sync or audit service has completed since the check. A full `rclone size` comparison only starts when the saved result is missing or a newer sync/audit run exists. This keeps page loads cheap and avoids re-counting remote files just because the dashboard was opened.
 
 Live Pictures parity distinguishes a normal replication window from a failed sync. If the Linux source has newer files than the last completed mirror chain, the dashboard shows `PENDING SYNC` and a warning instead of a mismatch. This detects both normal file writes and Immich library moves that preserve a media file's original timestamp. A mismatch remains a failure when the source has not changed since the sync.
