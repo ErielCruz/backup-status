@@ -153,8 +153,11 @@ BACKUP_SSD_EXCLUDES = [
     "HomeServerBackups/restic-backups/**",
     "HomeServerBackups/restic-secrets/**",
     "HomeServerBackups/runs/**",
+    "HomeServerBackups/staging/**",
     "HomeServerBackups/latest",
+    "HomeServerBackups/latest.rclonelink",
     "HomeServerBackups/*/latest",
+    "HomeServerBackups/*/latest.rclonelink",
 ]
 
 LIVE_PICTURES_EXCLUDES = [
@@ -1011,7 +1014,7 @@ def compute_mirror_checks(trigger_ts=None):
                     info = {"count": None, "bytes": None, "status": "error", "error": str(exc)}
                 if info.get("status") == "error":
                     fallback = audit_size_fallback(group["id"], label)
-                    if fallback and fallback.get("count") is not None and fallback.get("bytes") is not None:
+                    if "timed out" in info.get("error", "").lower() and fallback and fallback.get("count") is not None and fallback.get("bytes") is not None:
                         info.update(fallback)
                         info["status"] = "stale"
                         info["error"] = "Live size check timed out; showing last audit value."

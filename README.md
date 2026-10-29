@@ -78,7 +78,7 @@ Hetzner Pictures can be slow to list with `rclone size`. The sync service can su
 The running container is defined outside this repo:
 
 ```bash
-/home/eriel/Documents/backup_docker/stacks/backup-status/compose.yaml
+/home/eriel/Documents/home_server_stacks/stacks/backup-status/compose.yaml
 ```
 
 Required mounts:
@@ -100,7 +100,7 @@ local source as `UNKNOWN` until the mount is restored.
 Rebuild and restart:
 
 ```bash
-cd /home/eriel/Documents/backup_docker/stacks/backup-status
+cd /home/eriel/Documents/home_server_stacks/stacks/backup-status
 docker compose up -d --build
 ```
 
@@ -117,3 +117,5 @@ docker compose up -d --build
 | `GET /api/logs/<unit>` | Latest invocation journal lines for an allowed backup/sync unit |
 | `POST /api/trigger/<unit>` | Start an allowed backup/sync unit |
 | `GET /api/clear-cache` | Clear in-memory dashboard cache and saved mirror parity cache |
+
+The dashboard image pins rclone 1.75.2 from the official rclone image. The older distro build cannot authorize the current restricted B2 keys. Provider errors remain visible; only listing timeouts may use a saved audit fallback.

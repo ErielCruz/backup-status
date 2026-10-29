@@ -1,12 +1,16 @@
+FROM rclone/rclone:1.75.2 AS rclone
+
 FROM python:3.15-slim
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
        restic \
-       rclone \
        systemd \
        wget \
     && rm -rf /var/lib/apt/lists/*
+
+COPY --from=rclone /usr/local/bin/rclone /usr/local/bin/rclone
+RUN rclone version
 
 WORKDIR /app
 
